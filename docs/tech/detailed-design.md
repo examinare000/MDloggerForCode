@@ -2,8 +2,8 @@
 
 > **更新情報**: このドキュメントは v0.1.0 時点の初期設計を記録しています。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.7-dev (2025-10-04)
-> テスト品質: 221/231 成功 (95.7%)
+> 現在バージョン: v0.4.11 (2025-11-07)
+> テスト品質: 272/272 tests (100%)
 
 ## 1. アーキテクチャ概要
 
@@ -12,7 +12,7 @@
 ┌──────────────────────────────────────────────────────┐
 │                 VS Code Host                         │
 ├──────────────────────────────────────────────────────┤
-│  MDloggerForCode Extension (v0.4.7-dev)              │
+│  MDloggerForCode Extension (v0.4.11)              │
 │  ┌──────────────┐  ┌────────────────────────────┐   │
 │  │  Extension   │  │   Providers                │   │
 │  │   Host       │←→│  - DocumentLink            │   │
@@ -2305,69 +2305,44 @@ export function activate(context: vscode.ExtensionContext) {
 ## 18. Quick Capture Sidebar (クイックキャプチャサイドバー)
 
 ### 18.1 概要
-右サイドバーにクイック入力 UI を提供し、短いメモを当日の DailyNote の特定セクションへタイムスタンプ付きで自動追記する機能を追加する。加えて、Vault 内の未完了タスクを収集して一覧表示し、ワンクリックで完了・編集できるインタラクションを提供する。
+Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行メモの即時追記と DailyNote 配下の未完了タスク一覧/完了操作を提供する。DailyNote 機能が有効なときだけ登録する。
 
-### 18.2 主要な設計決定
-- 実装方式: VS Code `WebviewViewProvider` を使用して右サイドバーを実装する。
-- 設定管理: 既存の `ConfigurationManager`（設定プレフィックス: `obsd`）に以下のキーを追加する。これらは `package.json` の `contributes.configuration` に登録する。
-    - `mdlg.vaultPath` (string)
-    - `mdlg.notesFolder` (string) — daily notes のディレクトリ
-    - `mdlg.dailyNoteFormat` (string) — 例: `YYYY-MM-DD.md`
-    - `mdlg.captureSectionName` (string) — 追記対象の見出し名（例: `Quick Notes`）
+### 18.2 コンポーネントと責務
+- `QuickCaptureSidebarProvider`: WebviewViewProvider。`mdlg.quickCapture` を Explorer に登録し、`capture:add`・`request:tasks`・`task:complete` のメッセージを処理して DailyNote と TaskService を橋渡しする。`mdlg.openQuickCapture` は `workbench.view.explorer` → `mdlg.quickCapture.focus` を呼び出しビューにフォーカスする。
+- `DailyNoteManager.appendToSection`: append 先セクションを決定し、必要なら `## {captureSectionName}` を新設して `- [ ] {HH:mm}? {content}` を追記する。`openOrCreateDailyNote` でファイルを確保した後にテキストを読み込み、次の見出し直前またはファイル末尾へ挿入する。行末は `\n` 固定で書き戻すため CRLF を LF に正規化する。
+- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。完了時は `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
 
-### 18.3 コントラクト（小さく明確に）
-- 入力: サイドバーのテキスト入力（短文）、ユーザ操作（追加、完了、編集）
-- 出力: 当日 DailyNote の指定セクション末尾に以下の形式で1行を追記する: `- [ ] HH:mm — {content}  (from: {source})`
-- 副作用: 元ノートのタスク完了時に該当行へ `[completion: YYYY-MM-DD]` を付記し、チェックボックスを `- [x]` に更新する。
-- エラー: Vault 未設定や I/O エラー時は `vscode.window.showErrorMessage` でユーザーに通知する。
+### 18.3 設定と前提
+- 登録条件: `mdlg.dailyNoteEnabled` が true の場合にのみ Quick Capture ビューと `mdlg.openQuickCapture` コマンドを登録。
+- 主要設定: `mdlg.vaultRoot`（Vault ルート）、`mdlg.dailyNotePath` / `mdlg.dailyNoteFormat` / `mdlg.dailyNoteTemplate`（日次ノートの配置と名前付け）、`mdlg.noteExtension`、`mdlg.captureSectionName`（追記先見出し。デフォルト `Quick Notes`）、`mdlg.timeFormat`（追記行の時刻フォーマット）。タスクスキャンは `mdlg.dailyNotePath` 配下に限定する。
 
-### 18.4 Webview と拡張側のメッセージプロトコル
-- Webview → Extension:
-    - `capture:add` { content: string, source?: string }
-    - `task:complete` { uri: string, line: number, text: string }
-    - `task:edit` { uri: string, line: number, newText: string }
-    - `request:tasks` {}
+### 18.4 Webview メッセージプロトコル
+- Webview → Extension
+  - `capture:add` { content: string }
+  - `request:tasks`
+  - `task:complete` { payload: { uri: string; line: number } }
+- Extension → Webview
+  - `capture:ok` { timestamp: ISO string, uri: string, line: number }
+  - `tasks:update` { tasks: { uri: string; file: string; line: number; text: string }[] }
+  - `error` { message: string }
 
-- Extension → Webview:
-    - `tasks:update` { tasks: TaskItem[] }
-    - `capture:ok` { timestamp: string }
-    - `error` { message: string }
+### 18.5 振る舞い詳細
+- `capture:add`: 空文字と workspace 未オープンを弾き、`appendToSection` を呼び出して挿入位置を返す。例外は `error` メッセージで通知。
+- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を `tasks:update` で返す。
+- `task:complete`: ペイロードを検証し、`completeTask(uri, line, today)` で完了タグを付与→直後に `request:tasks` と同じ経路で一覧を再送。
 
-TaskItem 型 (JSON 表現):
-```
-{ "uri": string, "line": number, "text": string, "file": string }
-```
+### 18.6 エラーハンドリングと制約
+- 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
+- 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
+- ファイル書き戻しが LF 固定のため既存 CRLF が変換される可能性あり。
+- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
 
-### 18.5 ファイル操作の設計方針
-- 当日の DailyNote の検出・作成は `DailyNoteManager` を再利用する。存在しない場合はテンプレートに従って作成する。
-- 指定セクションの末尾への追記は、ファイルを読み込み、見出し（指定名）を見つけ、その見出しブロックの終端直前に行を挿入した上で `workspace.fs.writeFile` で上書きする。見出しが見つからない場合は、ファイル末尾に見出しと挿入内容を付与する。
-- タスク完了処理は元ノートの該当行をテキスト単位で置換し、末尾に `[completion: YYYY-MM-DD]` を付け、チェックボックスを `- [x]` にする。
-
-### 18.6 ノート内タスク抽出ロジック
-- vault 配下の `.md` ファイルを `NoteFinder.getAllNotes()` で列挙し、正規表現でチェックボックス行を抽出する（例: `/^\\s*[-*+]\\s+\\[\\s*\\]\\s+(.*)$/`）。
-- 取得時はテキストとファイル URI、行番号を返す。表示は最大 N 件 (設定可能) を上限にする。
-
-### 18.7 UI 詳細（最小実装仕様）
-- 上部: 1行入力フィールド、送信ボタン（Enterで送信、Shift+Enterで改行）
-- 中央: 当日の指定セクションのプレビュー（最後5行）と「全開く」ボタン
-- 下部: 未完了タスクリスト（ファイル名と行のプレーン表示）。各アイテムに「完了」ボタンと「編集」ボタンを配置
-
-### 18.8 テスト計画
-- 単体テスト: `DailyNoteManager.appendToSection()` のユニットテスト（既存のテンプレート・見出し有無・競合ケース）
-- ユーティリティテスト: `NoteParser.extractTasks()`、`NoteParser.markTaskCompleted()` のテスト
-- E2E（手動）: サイドバーで入力 → DailyNote に追記、タスク完了ボタン→元ノートの置換検証
-
-### 18.9 既存機能との共存
-- DailyNote の作成・補完・内部リンク機能は変更しない。新 API は既存クラスに最小限の public メソッドを追加するのみ。
-
-### 18.10 未解決事項 / 将来の改善
-- サイドバーのパフォーマンス最適化（大規模 Vault のタスク列挙）: インデックス化/バックグラウンド更新を検討
-- タスク行のより堅牢な識別方法（行ID or edit-hash）: 現状はテキストマッチ方式
+### 18.7 テスト状況と残課題
+- 実装済みユニットテスト: `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`、`tests/unit/services/TaskService.test.ts`、`tests/unit/utils/TaskCollector.test.ts`、`tests/unit/utils/NoteParser.test.ts`。
+- 未解決のテスト負債: `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` は `vscode.workspace.fs` 依存のため `describe.skip`。セクション検出/改行の振る舞いに回帰リスクが残る。I/O 抽象化か `NoteParser.insertIntoSection` の再利用でテスト容易性を高める改善が必要。
 
 ---
 
-**文書バージョン**: 1.7
-**最終更新**: 2025-10-30
-**更新内容**: Quick Capture Sidebar セクション追加
-
-
+**Document version**: 1.8  
+**Last updated**: 2025-11-19  
+**Update note**: Quick Capture 実装との差分解消（設定キー・メッセージ経路・タスク完了処理）とテスト負債の明示化
