@@ -1,8 +1,8 @@
 # MDloggerForCode 詳細設計書
 
-> **更新情報**: このドキュメントは v0.1.0 時点の初期設計を記録しています。
+> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.11 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定）を反映。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.11 (2025-11-07)
+> 現在バージョン: v0.4.11 (2025-11-19 時点)
 > テスト品質: 272/272 tests (100%)
 
 ## 1. アーキテクチャ概要
@@ -56,124 +56,61 @@
 
 ### 2.1 package.json設計
 
-> **注意**: 以下は初期設計です。最新の `package.json` では以下の機能が追加されています：
-> - `mdlg.openDailyNote` コマンド
-> - `mdlg.handleEnterKey` コマンド
-> - `dailyNoteTemplate`, `dailyNotePath`, `dailyNoteEnabled` 設定
-> - `listContinuationEnabled`, `searchSubdirectories` 設定
-> - activationEvents の拡充
+> **スナップショット (v0.4.11)**: Quick Capture / DailyNote / リスト継続 / サブディレクトリ検索を含む現行構成。
 
 ```json
 {
-  "name": "MDloggerForCode",
-  "displayName": "MDloggerForCode",
-  "version": "0.4.4",
+  "name": "mdloggerforcode",
+  "displayName": "MDlogger For Code",
+  "version": "0.4.11",
   "engines": { "vscode": "^1.103.0" },
-  "categories": ["Other"],
   "activationEvents": [
     "onLanguage:markdown",
     "onCommand:mdlg.openOrCreateWikiLink",
     "onCommand:mdlg.insertDate",
     "onCommand:mdlg.insertTime",
     "onCommand:mdlg.preview",
+    "onCommand:mdlg.openQuickCapture",
     "onCommand:mdlg.openDailyNote",
     "onCommand:mdlg.handleEnterKey"
   ],
-  "main": "./out/src/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "mdlg.openOrCreateWikiLink",
-        "title": "Open or Create Wiki Link"
-      },
-      {
-        "command": "mdlg.insertDate",
-        "title": "Insert Date"
-      },
-      {
-        "command": "mdlg.insertTime",
-        "title": "Insert Time"
-      },
-      {
-        "command": "mdlg.preview",
-        "title": "Preview Markdown"
-      },
-      {
-        "command": "mdlg.openDailyNote",
-        "title": "Open Daily Note"
-      },
-      {
-        "command": "mdlg.handleEnterKey",
-        "title": "Handle Enter Key"
-      }
+      { "command": "mdlg.openOrCreateWikiLink", "title": "Open or Create Wiki Link" },
+      { "command": "mdlg.insertDate", "title": "Insert Date" },
+      { "command": "mdlg.insertTime", "title": "Insert Time" },
+      { "command": "mdlg.preview", "title": "Preview Markdown" },
+      { "command": "mdlg.openQuickCapture", "title": "Open Quick Capture" },
+      { "command": "mdlg.openDailyNote", "title": "Open Daily Note" },
+      { "command": "mdlg.handleEnterKey", "title": "Handle Enter Key" }
     ],
     "keybindings": [
-      {
-        "command": "mdlg.openOrCreateWikiLink",
-        "key": "ctrl+enter",
-        "mac": "cmd+enter",
-        "when": "editorTextFocus && mdlg.inWikiLink"
-      },
-      {
-        "command": "mdlg.insertDate",
-        "key": "alt+d",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "mdlg.insertTime",
-        "key": "alt+t", 
-        "when": "editorTextFocus"
-      }
+      { "command": "mdlg.openOrCreateWikiLink", "key": "ctrl+enter", "mac": "cmd+enter", "when": "editorTextFocus && mdlg.inWikiLink" },
+      { "command": "mdlg.insertDate", "key": "alt+d", "when": "editorTextFocus" },
+      { "command": "mdlg.insertTime", "key": "alt+t", "when": "editorTextFocus" },
+      { "command": "mdlg.handleEnterKey", "key": "enter", "when": "editorTextFocus && editorLangId == 'markdown'" }
     ],
+    "views": {
+      "explorer": [
+        { "type": "webview", "id": "mdlg.quickCapture", "name": "Quick Capture" }
+      ]
+    },
     "configuration": {
       "title": "MDloggerForCode",
       "properties": {
-        "mdlg.vaultRoot": {
-          "type": "string",
-          "default": "",
-          "description": "Vault root directory path"
-        },
-        "mdlg.noteExtension": {
-          "type": "string", 
-          "default": ".md",
-          "description": "Note file extension"
-        },
-        "mdlg.slugStrategy": {
-          "type": "string",
-          "enum": ["passthrough", "kebab-case", "snake_case"],
-          "default": "passthrough",
-          "description": "File name transformation strategy"
-        },
-        "mdlg.dateFormat": {
-          "type": "string",
-          "default": "YYYY-MM-DD",
-          "description": "Date insertion format"
-        },
-        "mdlg.timeFormat": {
-          "type": "string", 
-          "default": "HH:mm",
-          "description": "Time insertion format"
-        },
-        "mdlg.template": {
-          "type": "string",
-          "default": "",
-          "description": "New note template"
-        },
-        "mdlg.dailyNoteEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable or disable DailyNote functionality"
-        },
-        "mdlg.dailyNotePath": {
-          "type": "string",
-          "default": "dailynotes",
-          "description": "Daily notes directory path (relative to vault root)"
-        },
-        "mdlg.dailyNoteTemplate": {
-          "type": "string",
-          "default": "",
-          "description": "Daily note template file path (relative to vault root)"
-        },
+        "mdlg.vaultRoot": { "type": "string", "default": "", "description": "Vault root directory path" },
+        "mdlg.noteExtension": { "type": "string", "default": ".md", "description": "Note file extension" },
+        "mdlg.slugStrategy": { "type": "string", "enum": ["passthrough", "kebab-case", "snake_case"], "default": "passthrough", "description": "File name transformation strategy" },
+        "mdlg.dateFormat": { "type": "string", "default": "YYYY-MM-DD", "description": "Date insertion format" },
+        "mdlg.timeFormat": { "type": "string", "default": "HH:mm", "description": "Time insertion format" },
+        "mdlg.template": { "type": "string", "default": "", "description": "New note template" },
+        "mdlg.dailyNoteEnabled": { "type": "boolean", "default": true, "description": "Enable or disable DailyNote functionality" },
+        "mdlg.dailyNotePath": { "type": "string", "default": "dailynotes", "description": "Daily notes directory path (relative to vault root)" },
+        "mdlg.dailyNoteFormat": { "type": "string", "default": "YYYY-MM-DD.md", "description": "Daily note file name format" },
+        "mdlg.dailyNoteTemplate": { "type": "string", "default": "", "description": "Daily note template file path (relative to vault root)" },
+        "mdlg.captureSectionName": { "type": "string", "default": "Quick Notes", "description": "Section heading name inside the daily note to append captured items" },
+        "mdlg.listContinuationEnabled": { "type": "boolean", "default": true, "description": "Enable automatic continuation of lists and checkboxes when pressing Enter" },
+        "mdlg.searchSubdirectories": { "type": "boolean", "default": true, "description": "Search subdirectories when opening WikiLinks" },
         "mdlg.dailyNoteKeybindingGuide": {
           "type": "string",
           "default": "Follow the steps below",
@@ -190,55 +127,73 @@
 ### 2.2 拡張機能エントリーポイント
 
 ```typescript
-// src/extension.ts
+// src/extension.ts（簡略化した骨格）
 import * as vscode from 'vscode';
+import { ConfigurationManager } from './managers/ConfigurationManager';
 import { WikiLinkProvider } from './providers/WikiLinkProvider';
+import { WikiLinkCompletionProvider } from './providers/WikiLinkCompletionProvider';
+import { ListContinuationProvider } from './providers/ListContinuationProvider';
+import { QuickCaptureSidebarProvider } from './providers/QuickCaptureSidebarProvider';
 import { PreviewProvider } from './providers/PreviewProvider';
 import { CommandHandler } from './handlers/CommandHandler';
 import { ContextManager } from './managers/ContextManager';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('MDloggerForCode Extension is now active');
-    
-    // プロバイダー登録
-    const wikiLinkProvider = new WikiLinkProvider();
+    const configManager = new ConfigurationManager();
+    const wikiLinkProvider = new WikiLinkProvider(configManager);
+    const completionProvider = new WikiLinkCompletionProvider(configManager);
+    const listProvider = new ListContinuationProvider(configManager);
     const previewProvider = new PreviewProvider(context);
-    const commandHandler = new CommandHandler();
+    const commandHandler = new CommandHandler(configManager);
     const contextManager = new ContextManager();
-    
-    // DocumentLinkProvider登録
+
+    // WikiLinkリンク化 + 補完
     context.subscriptions.push(
         vscode.languages.registerDocumentLinkProvider(
             { scheme: 'file', language: 'markdown' },
             wikiLinkProvider
+        ),
+        vscode.languages.registerCompletionItemProvider(
+            { scheme: 'file', language: 'markdown' },
+            completionProvider,
+            '[', '/', '['
         )
     );
-    
-    // Webviewプロバイダー登録
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            'mdlg.preview',
-            previewProvider
-        )
-    );
-    
+
+    // クイックキャプチャ（DailyNote有効時のみ）
+    if (configManager.getDailyNoteEnabled()) {
+        const quickCapture = new QuickCaptureSidebarProvider(context, configManager);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider('mdlg.quickCapture', quickCapture),
+            vscode.commands.registerCommand('mdlg.openQuickCapture', () =>
+                vscode.commands.executeCommand('workbench.view.explorer').then(() =>
+                    vscode.commands.executeCommand('mdlg.quickCapture.focus')
+                )
+            )
+        );
+    }
+
     // コマンド登録
     context.subscriptions.push(
-        vscode.commands.registerCommand('mdlg.openOrCreateWikiLink', 
-            () => commandHandler.openOrCreateWikiLink()),
-        vscode.commands.registerCommand('mdlg.insertDate',
-            () => commandHandler.insertDate()),
-        vscode.commands.registerCommand('mdlg.insertTime',
-            () => commandHandler.insertTime()),
-        vscode.commands.registerCommand('mdlg.preview',
-            () => previewProvider.show())
+        vscode.commands.registerCommand('mdlg.openOrCreateWikiLink', () => commandHandler.openOrCreateWikiLink()),
+        vscode.commands.registerCommand('mdlg.insertDate', () => commandHandler.insertDate()),
+        vscode.commands.registerCommand('mdlg.insertTime', () => commandHandler.insertTime()),
+        vscode.commands.registerCommand('mdlg.preview', () => previewProvider.show()),
+        vscode.commands.registerCommand('mdlg.openDailyNote', () => commandHandler.openDailyNote()),
+        vscode.commands.registerCommand('mdlg.handleEnterKey', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                const handled = await listProvider.handleEnterKey(editor);
+                if (!handled) {
+                    vscode.commands.executeCommand('default:type', { text: '\n' });
+                }
+            }
+        })
     );
-    
-    // エディタ変更監視（コンテキスト管理）
+
+    // コンテキスト管理
     context.subscriptions.push(
-        vscode.window.onDidChangeTextEditorSelection(
-            (e) => contextManager.updateWikiLinkContext(e)
-        )
+        vscode.window.onDidChangeTextEditorSelection(e => contextManager.updateWikiLinkContext(e))
     );
 }
 
