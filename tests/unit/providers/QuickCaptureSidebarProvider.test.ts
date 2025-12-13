@@ -25,7 +25,9 @@ describe('QuickCaptureSidebarProvider', () => {
         // ConfigurationManagerのモック
         mockConfigManager = {
             getCaptureSectionName: () => 'Quick Notes',
-            getTimeFormat: () => 'HH:mm'
+            getTimeFormat: () => 'HH:mm',
+            getVaultRoot: () => '',
+            getDailyNotePath: () => 'dailynotes'
         } as any;
 
         // DailyNoteManagerのモック
@@ -35,6 +37,9 @@ describe('QuickCaptureSidebarProvider', () => {
                     uri: vscode.Uri.file('/test/dailynote.md'),
                     line: 5
                 };
+            },
+            getDailyNoteDirectory: (workspace: any) => {
+                return vscode.Uri.file('/test/workspace/dailynotes');
             }
         } as any;
 
