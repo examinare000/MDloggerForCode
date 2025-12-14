@@ -1,3 +1,4 @@
+import { describe, it, before } from 'mocha';
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 import * as path from 'path';

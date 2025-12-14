@@ -1,3 +1,4 @@
+import { describe, it } from 'mocha';
 import { expect } from 'chai';
 
 // シンプルなテストファイル - DailyNoteManagerの基本機能確認

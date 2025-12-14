@@ -6,6 +6,7 @@
  * @version 1.0.0
  */
 
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 import * as sinon from 'sinon';

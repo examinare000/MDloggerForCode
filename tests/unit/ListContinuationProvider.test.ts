@@ -6,6 +6,7 @@
  * @version 1.0.0
  */
 
+import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 import { ListContinuationProvider } from '../../src/providers/ListContinuationProvider';

@@ -1,3 +1,4 @@
+import { describe, it } from 'mocha';
 import { expect } from 'chai';
 
 // 設定可能なDailyNote機能のテスト（vscode依存なし）
