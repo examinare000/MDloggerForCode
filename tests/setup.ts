@@ -22,7 +22,6 @@ const vscode = {
             };
 
             const configData: Record<string, any> = {
-                obsd: sharedConfig,
                 mdlg: sharedConfig
             };
 

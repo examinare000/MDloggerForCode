@@ -43,7 +43,7 @@ class MockWorkspaceConfiguration {
     let mockConfig;
     (0, mocha_1.beforeEach)(() => {
         mockConfig = new MockWorkspaceConfiguration({
-            obsd: {
+            mdlg: {
                 vaultRoot: '/test/vault',
                 noteExtension: '.md',
                 slugStrategy: 'passthrough',

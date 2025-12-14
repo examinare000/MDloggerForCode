@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import * as vscode from 'vscode';
-import { ConfigurationManager, ObsdConfiguration } from '../../../src/managers/ConfigurationManager';
+import { ConfigurationManager, MdlgConfiguration } from '../../../src/managers/ConfigurationManager';
 
 describe('ConfigurationManager', () => {
     let configManager: ConfigurationManager;
