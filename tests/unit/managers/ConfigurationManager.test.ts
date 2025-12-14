@@ -24,9 +24,17 @@ describe('ConfigurationManager', () => {
             expect(extension).to.equal('.md');
         });
 
-        // Skip: Dynamic configuration update not supported with global mock
-        it.skip('カスタムnoteExtension値を取得できる', () => {
-            // This test requires dynamic config updates which the global mock doesn't support
+        it('カスタムnoteExtension値を取得できる', () => {
+            const customConfig = {
+                get: (key: string, defaultValue?: any) => {
+                    if (key === 'noteExtension') return '.markdown';
+                    return defaultValue;
+                },
+                has: () => true,
+                update: () => Promise.resolve()
+            };
+            const customManager = new ConfigurationManager(customConfig);
+            expect(customManager.getNoteExtension()).to.equal('.markdown');
         });
 
         it('slugStrategyの設定値を取得できる', () => {
@@ -34,9 +42,17 @@ describe('ConfigurationManager', () => {
             expect(strategy).to.equal('passthrough');
         });
 
-        // Skip: Dynamic configuration update not supported with global mock
-        it.skip('無効なslugStrategyの場合デフォルト値を返す', () => {
-            // This test requires dynamic config updates which the global mock doesn't support
+        it('無効なslugStrategyの場合デフォルト値を返す', () => {
+            const customConfig = {
+                get: (key: string, defaultValue?: any) => {
+                    if (key === 'slugStrategy') return 'invalid-strategy';
+                    return defaultValue;
+                },
+                has: () => true,
+                update: () => Promise.resolve()
+            };
+            const customManager = new ConfigurationManager(customConfig);
+            expect(customManager.getSlugStrategy()).to.equal('passthrough');
         });
     });
 
@@ -51,9 +67,17 @@ describe('ConfigurationManager', () => {
             expect(format).to.equal('HH:mm');
         });
 
-        // Skip: Dynamic configuration update not supported with global mock
-        it.skip('カスタム日付フォーマットを取得できる', () => {
-            // This test requires dynamic config updates which the global mock doesn't support
+        it('カスタム日付フォーマットを取得できる', () => {
+            const customConfig = {
+                get: (key: string, defaultValue?: any) => {
+                    if (key === 'dateFormat') return 'DD/MM/YYYY';
+                    return defaultValue;
+                },
+                has: () => true,
+                update: () => Promise.resolve()
+            };
+            const customManager = new ConfigurationManager(customConfig);
+            expect(customManager.getDateFormat()).to.equal('DD/MM/YYYY');
         });
     });
 
@@ -63,9 +87,17 @@ describe('ConfigurationManager', () => {
             expect(template).to.equal('# {{title}}\n\n');
         });
 
-        // Skip: Dynamic configuration update not supported with global mock
-        it.skip('空のテンプレートを処理できる', () => {
-            // This test requires dynamic config updates which the global mock doesn't support
+        it('空のテンプレートを処理できる', () => {
+            const customConfig = {
+                get: (key: string, defaultValue?: any) => {
+                    if (key === 'template') return '';
+                    return defaultValue;
+                },
+                has: () => true,
+                update: () => Promise.resolve()
+            };
+            const customManager = new ConfigurationManager(customConfig);
+            expect(customManager.getTemplate()).to.equal('');
         });
     });
 
@@ -138,9 +170,28 @@ describe('ConfigurationManager', () => {
     });
 
     describe('設定変更監視', () => {
-        // Skip: Dynamic configuration update not supported with global mock
-        it.skip('設定変更コールバックを登録できる', () => {
-            // This test requires dynamic config updates which the global mock doesn't support
+        it('設定変更コールバックを登録できる', () => {
+            const customConfig = {
+                get: (key: string, defaultValue?: any) => defaultValue,
+                has: () => true,
+                update: () => Promise.resolve()
+            };
+            const customManager = new ConfigurationManager(customConfig);
+
+            let callCount = 0;
+            const disposable = customManager.onConfigurationChanged(() => {
+                callCount++;
+            });
+
+            customManager.triggerConfigurationChanged();
+            expect(callCount).to.equal(1);
+
+            customManager.triggerConfigurationChanged();
+            expect(callCount).to.equal(2);
+
+            disposable.dispose();
+            customManager.triggerConfigurationChanged();
+            expect(callCount).to.equal(2); // Should not increase after dispose
         });
     });
 });
