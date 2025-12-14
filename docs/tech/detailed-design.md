@@ -2271,7 +2271,11 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 - 登録条件: `mdlg.dailyNoteEnabled` が true の場合にのみ Quick Capture ビューと `mdlg.openQuickCapture` コマンドを登録。
 - 主要設定: `mdlg.vaultRoot`（Vault ルート）、`mdlg.dailyNotePath` / `mdlg.dailyNoteFormat` / `mdlg.dailyNoteTemplate`（日次ノートの配置と名前付け）、`mdlg.noteExtension`、`mdlg.captureSectionName`（追記先見出し。デフォルト `Quick Notes`）、`mdlg.timeFormat`（追記行の時刻フォーマット）。タスクスキャンは `mdlg.dailyNotePath` 配下に限定する。
 
-### 18.4 Webview メッセージプロトコル
+### 18.4 UI 操作
+- 入力フィールド: 1行テキスト入力。**Ctrl+Enter (Cmd+Enter on Mac)** で送信、または「Add」ボタンクリックで送信。
+- タスク一覧: DailyNote配下の未完了タスクを表示。各タスクに「Complete」ボタン。
+
+### 18.5 Webview メッセージプロトコル
 - Webview → Extension
   - `capture:add` { content: string }
   - `request:tasks`
@@ -2281,23 +2285,23 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
   - `tasks:update` { tasks: { uri: string; file: string; line: number; text: string }[] }
   - `error` { message: string }
 
-### 18.5 振る舞い詳細
+### 18.6 振る舞い詳細
 - `capture:add`: 空文字と workspace 未オープンを弾き、`appendToSection` を呼び出して挿入位置を返す。例外は `error` メッセージで通知。
 - `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を `tasks:update` で返す。
 - `task:complete`: ペイロードを検証し、`completeTask(uri, line, today)` で完了タグを付与→直後に `request:tasks` と同じ経路で一覧を再送。
 
-### 18.6 エラーハンドリングと制約
+### 18.7 エラーハンドリングと制約
 - 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
 - 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
 - ファイル書き戻しが LF 固定のため既存 CRLF が変換される可能性あり。
 - タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
 
-### 18.7 テスト状況と残課題
+### 18.8 テスト状況と残課題
 - 実装済みユニットテスト: `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`、`tests/unit/services/TaskService.test.ts`、`tests/unit/utils/TaskCollector.test.ts`、`tests/unit/utils/NoteParser.test.ts`。
 - 未解決のテスト負債: `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` は `vscode.workspace.fs` 依存のため `describe.skip`。セクション検出/改行の振る舞いに回帰リスクが残る。I/O 抽象化か `NoteParser.insertIntoSection` の再利用でテスト容易性を高める改善が必要。
 
 ---
 
-**Document version**: 1.8  
-**Last updated**: 2025-11-19  
-**Update note**: Quick Capture 実装との差分解消（設定キー・メッセージ経路・タスク完了処理）とテスト負債の明示化
+**Document version**: 1.9
+**Last updated**: 2025-12-14
+**Update note**: Quick Capture UI操作セクション追加（Ctrl+Enter送信）、セクション番号調整
