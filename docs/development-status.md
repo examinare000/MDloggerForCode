@@ -9,20 +9,26 @@
 - **開発期間**: 2025-09-09 ～ 2025-12-14 (継続開発)
 - **開発手法**: Test-Driven Development (TDD) - t-wada方式
 - **現在バージョン**: v0.4.12
-- **テスト数**: 272個 (254パス / 18スキップ)
+- **テスト数**: 278個 (264パス / 14スキップ)
 - **テスト成功率**: 100% (スキップ除外時)
 - **コンポーネント数**: 13個
 - **ADR記録**: 19件
 
 ### ✅ 実装完了機能
 
-#### v0.4.12 Quick Capture改善 (2025-12-14)
+#### v0.4.12 Quick Capture改善・DailyNoteManagerリファクタリング (2025-12-14)
 - ✅ **タスク表示範囲のdailyNote配下限定**
   - 未完了タスク一覧をdailyNote配下のファイルのみに制限
   - `getDailyNoteDirectory` API を利用
 - ✅ **Ctrl+Enter (Cmd+Enter) での送信機能**
   - 入力フィールドでCtrl+Enter (Mac: Cmd+Enter) でクイック送信
   - 「Add」ボタンクリックでの送信も継続サポート
+- ✅ **DailyNoteManager I/O抽象化**
+  - `IFileWriter` インターフェースを拡張（`exists`/`createDirectory` 追加）
+  - `DailyNoteManager` に `IFileWriter` を DI 注入
+  - パス解決ロジックを `resolveVaultUri` ヘルパーに集約
+  - `appendToSection` を `NoteParser.insertIntoSection` 経由に変更
+  - スキップされていた appendToSection テスト 10件を有効化
 
 #### v0.4.11 リネーム/品質向上 (2025-11-19)
 - ? **ObsidianForCode → MDloggerForCode 完全リネーム**

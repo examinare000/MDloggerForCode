@@ -2264,7 +2264,12 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 
 ### 18.2 コンポーネントと責務
 - `QuickCaptureSidebarProvider`: WebviewViewProvider。`mdlg.quickCapture` を Explorer に登録し、`capture:add`・`request:tasks`・`task:complete` のメッセージを処理して DailyNote と TaskService を橋渡しする。`mdlg.openQuickCapture` は `workbench.view.explorer` → `mdlg.quickCapture.focus` を呼び出しビューにフォーカスする。
-- `DailyNoteManager.appendToSection`: append 先セクションを決定し、必要なら `## {captureSectionName}` を新設して `- [ ] {HH:mm}? {content}` を追記する。`openOrCreateDailyNote` でファイルを確保した後にテキストを読み込み、次の見出し直前またはファイル末尾へ挿入する。行末は `\n` 固定で書き戻すため CRLF を LF に正規化する。
+- `DailyNoteManager`: 日次ノートの作成・管理を担当。`IFileWriter` を DI で受け取り、ファイル I/O を抽象化してテスト可能にしている。
+  - `getDailyNotePath` / `getDailyNoteDirectory`: `resolveVaultUri` ヘルパーを使用してパス解決ロジックを共通化。絶対/相対パス、リモート環境に対応。
+  - `appendToSection`: `NoteParser.insertIntoSection` を使用して純粋な文字列操作でセクション挿入。ファイル I/O は `IFileWriter` 経由。CRLF/LF を保持。
+  - `ensureDailyNoteExists`: ファイル存在確認と作成を `IFileWriter.exists` / `IFileWriter.write` で実施。
+- `IFileWriter`: ファイル読み書きの抽象化インターフェース。`read`/`write`/`exists`/`createDirectory` メソッドを持ち、テスト時はインメモリ実装に差し替え可能。
+- `NoteParser.insertIntoSection`: セクション検出と行挿入の純粋関数。VS Code API 非依存でユニットテスト容易。
 - `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。完了時は `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
 
 ### 18.3 設定と前提
@@ -2293,15 +2298,21 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 ### 18.7 エラーハンドリングと制約
 - 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
 - 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
-- ファイル書き戻しが LF 固定のため既存 CRLF が変換される可能性あり。
 - タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
 
-### 18.8 テスト状況と残課題
-- 実装済みユニットテスト: `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`、`tests/unit/services/TaskService.test.ts`、`tests/unit/utils/TaskCollector.test.ts`、`tests/unit/utils/NoteParser.test.ts`。
-- 未解決のテスト負債: `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` は `vscode.workspace.fs` 依存のため `describe.skip`。セクション検出/改行の振る舞いに回帰リスクが残る。I/O 抽象化か `NoteParser.insertIntoSection` の再利用でテスト容易性を高める改善が必要。
+### 18.8 テスト状況
+- 実装済みユニットテスト:
+  - `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`
+  - `tests/unit/services/TaskService.test.ts`
+  - `tests/unit/utils/TaskCollector.test.ts`
+  - `tests/unit/utils/NoteParser.test.ts`
+  - `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` ✅ (IFileWriter DI により有効化)
+- テストカバレッジ:
+  - セクション検出・挿入位置・CRLF/LF 保持の振る舞いをユニットテストでカバー
+  - インメモリ `IFileWriter` モックにより vscode.workspace.fs 非依存でテスト可能
 
 ---
 
-**Document version**: 1.9
+**Document version**: 2.0
 **Last updated**: 2025-12-14
-**Update note**: Quick Capture UI操作セクション追加（Ctrl+Enter送信）、セクション番号調整
+**Update note**: DailyNoteManager に IFileWriter DI を導入、パス解決ロジックを resolveVaultUri ヘルパーに集約、appendToSection テストを有効化
