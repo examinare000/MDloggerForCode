@@ -31,7 +31,7 @@ export class ConfigurationManager {
 ### 2. 型安全な設定アクセス
 ```typescript
 export type SlugStrategy = 'passthrough' | 'kebab-case' | 'snake_case';
-export interface ObsdConfiguration {
+export interface MdlgConfiguration {
     readonly vaultRoot: string;
     readonly noteExtension: string;
     readonly slugStrategy: SlugStrategy;
@@ -52,7 +52,7 @@ export interface ValidationResult {
 
 ### 4. 変更通知機能
 ```typescript
-onConfigurationChanged(callback: (config: ObsdConfiguration) => void): Disposable
+onConfigurationChanged(callback: (config: MdlgConfiguration) => void): Disposable
 ```
 
 ## 実装戦略
