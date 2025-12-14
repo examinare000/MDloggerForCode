@@ -2312,16 +2312,17 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 ### 18.8 テスト状況
 - 実装済みユニットテスト:
   - `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`
-  - `tests/unit/services/TaskService.test.ts`
+  - `tests/unit/services/TaskService.test.ts` ✅ (MockFileWriter に exists/createDirectory 追加)
   - `tests/unit/utils/TaskCollector.test.ts`
   - `tests/unit/utils/NoteParser.test.ts`
   - `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` ✅ (IFileWriter DI により有効化)
 - テストカバレッジ:
   - セクション検出・挿入位置・CRLF/LF 保持の振る舞いをユニットテストでカバー
   - インメモリ `IFileWriter` モックにより vscode.workspace.fs 非依存でテスト可能
+  - 全テストモックが `IFileWriter` インターフェースに完全準拠
 
 ---
 
-**Document version**: 2.0
+**Document version**: 2.1
 **Last updated**: 2025-12-14
-**Update note**: DailyNoteManager に IFileWriter DI を導入、パス解決ロジックを resolveVaultUri ヘルパーに集約、appendToSection テストを有効化
+**Update note**: TaskService.test.ts の MockFileWriter を IFileWriter インターフェースに準拠させ、コンパイルエラーを解消

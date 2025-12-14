@@ -29,6 +29,9 @@
   - パス解決ロジックを `resolveVaultUri` ヘルパーに集約
   - `appendToSection` を `NoteParser.insertIntoSection` 経由に変更
   - スキップされていた appendToSection テスト 10件を有効化
+- ✅ **テストモック整合性修正**
+  - `TaskService.test.ts` の `MockFileWriter` に `exists`/`createDirectory` を追加
+  - `IFileWriter` インターフェース変更に伴うコンパイルエラー解消
 
 #### v0.4.11 リネーム/品質向上 (2025-11-19)
 - ? **ObsidianForCode → MDloggerForCode 完全リネーム**
