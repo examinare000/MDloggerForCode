@@ -53,6 +53,20 @@ interface ObsdConfiguration {
   timeFormat: string;
   /** 新規ノートテンプレート */
   template: string;
+  /** DailyNote機能の有効/無効 */
+  dailyNoteEnabled: boolean;
+  /** DailyNote格納先ディレクトリ */
+  dailyNotePath: string;
+  /** DailyNoteファイル名フォーマット */
+  dailyNoteFormat: string;
+  /** DailyNoteテンプレートパス */
+  dailyNoteTemplate: string;
+  /** Quick Captureの追記先見出し */
+  captureSectionName: string;
+  /** リスト継続入力の有効/無効 */
+  listContinuationEnabled: boolean;
+  /** WikiLink解決時のサブディレクトリ探索可否 */
+  searchSubdirectories: boolean;
 }
 ```
 
@@ -576,6 +590,42 @@ interface PreviewParams {
 
 **動作**: Markdownプレビューを表示
 
+#### 4.1.5 mdlg.openDailyNote
+```typescript
+interface OpenDailyNoteParams {
+  /** 強制的に再生成するか（既存の場合でも上書きしないが再読込に使う） */
+  force?: boolean;
+}
+```
+
+**実行条件**: ワークスペースが開かれていること
+
+**動作**: `mdlg.dailyNotePath` / `mdlg.dailyNoteFormat` / `mdlg.dailyNoteTemplate` に従って日次ノートを生成し開く。無効化設定時は登録されない。
+
+#### 4.1.6 mdlg.openQuickCapture
+```typescript
+interface OpenQuickCaptureParams {
+  /** ビューを強制的にフォーカスするか */
+  focus?: boolean;
+}
+```
+
+**実行条件**: `mdlg.dailyNoteEnabled` が true のときのみ登録
+
+**動作**: Explorer の Quick Capture ビューを開き、Webview とメッセージングを開始する。
+
+#### 4.1.7 mdlg.handleEnterKey
+```typescript
+interface HandleEnterKeyParams {
+  /** 明示的にリスト継続を有効化するフラグ（設定より優先） */
+  force?: boolean;
+}
+```
+
+**実行条件**: Markdownエディタがアクティブ。`mdlg.listContinuationEnabled` が true のときに Enter キーで呼ばれる when 句を設定。
+
+**動作**: 箇条書き/番号/チェックボックス行で Enter を継続する。空リスト行では行を削除し通常改行にフォールバックする。
+
 ## 5. イベント仕様
 
 ### 5.1 カスタムイベント
@@ -615,6 +665,19 @@ class WikiLinkEventEmitter {
   /** プレビュー更新時のイベント */
   onPreviewUpdated: vscode.Event<{ document: vscode.TextDocument; html: string }>;
 }
+```
+
+### 5.3 Quick Capture Webview メッセージ
+```typescript
+type QuickCaptureInMessage =
+  | { command: 'capture:add'; content: string }
+  | { command: 'request:tasks' }
+  | { command: 'task:complete'; payload: { uri: string; line: number } };
+
+type QuickCaptureOutMessage =
+  | { command: 'capture:ok'; uri: string; line: number; timestamp: string }
+  | { command: 'tasks:update'; tasks: { uri: string; file: string; line: number; text: string }[] }
+  | { command: 'error'; message: string };
 ```
 
 ## 6. エラーコード定義
@@ -690,6 +753,6 @@ interface PerformanceMetrics {
 
 ---
 
-**文書バージョン**: 1.0  
-**最終更新**: 2025-09-09  
+**文書バージョン**: 1.1  
+**最終更新**: 2025-11-19  
 **承認者**: [承認者名]

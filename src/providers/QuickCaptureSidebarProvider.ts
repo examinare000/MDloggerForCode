@@ -64,7 +64,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                     }
 
                     case 'request:tasks': {
-            // Collect open tasks from workspace files and send to webview
+            // Collect open tasks from dailyNote directory only
             try {
               const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
               if (!workspaceFolder) {
@@ -72,8 +72,9 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                 return;
               }
 
-              // Use a simple glob to list markdown files under workspace/dailynotes
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder.uri, '**/*.md'), '**/node_modules/**', 200);
+              // Restrict search to the configured daily note directory
+              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
               const tasks = await this.taskService.collectTasksFromUris(files);
               webviewView.webview.postMessage({ command: 'tasks:update', tasks });
             } catch (err) {
@@ -94,13 +95,14 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
               const uri = vscode.Uri.file(uriStr);
               const today = new Date().toISOString().slice(0, 10);
               await this.taskService.completeTask(uri, line, today);
-              // refresh tasks
+              // refresh tasks from dailyNote directory only
               const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
               if (!workspaceFolder) {
                 webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
                 return;
               }
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(workspaceFolder.uri, '**/*.md'), '**/node_modules/**', 200);
+              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
               const tasks = await this.taskService.collectTasksFromUris(files);
               webviewView.webview.postMessage({ command: 'tasks:update', tasks });
             } catch (err) {
@@ -151,11 +153,21 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     const btn = document.getElementById('captureBtn');
     const tasksList = document.getElementById('tasksList');
 
-    btn.addEventListener('click', () => {
+    function submitCapture() {
       const v = input.value.trim();
       if (!v) return;
       vscode.postMessage({ command: 'capture:add', content: v });
       input.value = '';
+    }
+
+    btn.addEventListener('click', submitCapture);
+
+    // Ctrl+Enter (Cmd+Enter on Mac) to submit
+    input.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        submitCapture();
+      }
     });
 
     window.addEventListener('message', event => {

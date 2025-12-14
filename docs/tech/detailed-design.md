@@ -1,9 +1,9 @@
 # MDloggerForCode 詳細設計書
 
-> **更新情報**: このドキュメントは v0.1.0 時点の初期設計を記録しています。
+> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.12 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI）を反映。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.7-dev (2025-10-04)
-> テスト品質: 221/231 成功 (95.7%)
+> 現在バージョン: v0.4.12 (2025-12-14 時点)
+> テスト品質: 278/292 tests passing (14 skipped)
 
 ## 1. アーキテクチャ概要
 
@@ -12,7 +12,7 @@
 ┌──────────────────────────────────────────────────────┐
 │                 VS Code Host                         │
 ├──────────────────────────────────────────────────────┤
-│  MDloggerForCode Extension (v0.4.7-dev)              │
+│  MDloggerForCode Extension (v0.4.12)              │
 │  ┌──────────────┐  ┌────────────────────────────┐   │
 │  │  Extension   │  │   Providers                │   │
 │  │   Host       │←→│  - DocumentLink            │   │
@@ -56,124 +56,61 @@
 
 ### 2.1 package.json設計
 
-> **注意**: 以下は初期設計です。最新の `package.json` では以下の機能が追加されています：
-> - `mdlg.openDailyNote` コマンド
-> - `mdlg.handleEnterKey` コマンド
-> - `dailyNoteTemplate`, `dailyNotePath`, `dailyNoteEnabled` 設定
-> - `listContinuationEnabled`, `searchSubdirectories` 設定
-> - activationEvents の拡充
+> **スナップショット (v0.4.11)**: Quick Capture / DailyNote / リスト継続 / サブディレクトリ検索を含む現行構成。
 
 ```json
 {
-  "name": "MDloggerForCode",
-  "displayName": "MDloggerForCode",
-  "version": "0.4.4",
+  "name": "mdloggerforcode",
+  "displayName": "MDlogger For Code",
+  "version": "0.4.11",
   "engines": { "vscode": "^1.103.0" },
-  "categories": ["Other"],
   "activationEvents": [
     "onLanguage:markdown",
     "onCommand:mdlg.openOrCreateWikiLink",
     "onCommand:mdlg.insertDate",
     "onCommand:mdlg.insertTime",
     "onCommand:mdlg.preview",
+    "onCommand:mdlg.openQuickCapture",
     "onCommand:mdlg.openDailyNote",
     "onCommand:mdlg.handleEnterKey"
   ],
-  "main": "./out/src/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "mdlg.openOrCreateWikiLink",
-        "title": "Open or Create Wiki Link"
-      },
-      {
-        "command": "mdlg.insertDate",
-        "title": "Insert Date"
-      },
-      {
-        "command": "mdlg.insertTime",
-        "title": "Insert Time"
-      },
-      {
-        "command": "mdlg.preview",
-        "title": "Preview Markdown"
-      },
-      {
-        "command": "mdlg.openDailyNote",
-        "title": "Open Daily Note"
-      },
-      {
-        "command": "mdlg.handleEnterKey",
-        "title": "Handle Enter Key"
-      }
+      { "command": "mdlg.openOrCreateWikiLink", "title": "Open or Create Wiki Link" },
+      { "command": "mdlg.insertDate", "title": "Insert Date" },
+      { "command": "mdlg.insertTime", "title": "Insert Time" },
+      { "command": "mdlg.preview", "title": "Preview Markdown" },
+      { "command": "mdlg.openQuickCapture", "title": "Open Quick Capture" },
+      { "command": "mdlg.openDailyNote", "title": "Open Daily Note" },
+      { "command": "mdlg.handleEnterKey", "title": "Handle Enter Key" }
     ],
     "keybindings": [
-      {
-        "command": "mdlg.openOrCreateWikiLink",
-        "key": "ctrl+enter",
-        "mac": "cmd+enter",
-        "when": "editorTextFocus && mdlg.inWikiLink"
-      },
-      {
-        "command": "mdlg.insertDate",
-        "key": "alt+d",
-        "when": "editorTextFocus"
-      },
-      {
-        "command": "mdlg.insertTime",
-        "key": "alt+t", 
-        "when": "editorTextFocus"
-      }
+      { "command": "mdlg.openOrCreateWikiLink", "key": "ctrl+enter", "mac": "cmd+enter", "when": "editorTextFocus && mdlg.inWikiLink" },
+      { "command": "mdlg.insertDate", "key": "alt+d", "when": "editorTextFocus" },
+      { "command": "mdlg.insertTime", "key": "alt+t", "when": "editorTextFocus" },
+      { "command": "mdlg.handleEnterKey", "key": "enter", "when": "editorTextFocus && editorLangId == 'markdown'" }
     ],
+    "views": {
+      "explorer": [
+        { "type": "webview", "id": "mdlg.quickCapture", "name": "Quick Capture" }
+      ]
+    },
     "configuration": {
       "title": "MDloggerForCode",
       "properties": {
-        "mdlg.vaultRoot": {
-          "type": "string",
-          "default": "",
-          "description": "Vault root directory path"
-        },
-        "mdlg.noteExtension": {
-          "type": "string", 
-          "default": ".md",
-          "description": "Note file extension"
-        },
-        "mdlg.slugStrategy": {
-          "type": "string",
-          "enum": ["passthrough", "kebab-case", "snake_case"],
-          "default": "passthrough",
-          "description": "File name transformation strategy"
-        },
-        "mdlg.dateFormat": {
-          "type": "string",
-          "default": "YYYY-MM-DD",
-          "description": "Date insertion format"
-        },
-        "mdlg.timeFormat": {
-          "type": "string", 
-          "default": "HH:mm",
-          "description": "Time insertion format"
-        },
-        "mdlg.template": {
-          "type": "string",
-          "default": "",
-          "description": "New note template"
-        },
-        "mdlg.dailyNoteEnabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable or disable DailyNote functionality"
-        },
-        "mdlg.dailyNotePath": {
-          "type": "string",
-          "default": "dailynotes",
-          "description": "Daily notes directory path (relative to vault root)"
-        },
-        "mdlg.dailyNoteTemplate": {
-          "type": "string",
-          "default": "",
-          "description": "Daily note template file path (relative to vault root)"
-        },
+        "mdlg.vaultRoot": { "type": "string", "default": "", "description": "Vault root directory path" },
+        "mdlg.noteExtension": { "type": "string", "default": ".md", "description": "Note file extension" },
+        "mdlg.slugStrategy": { "type": "string", "enum": ["passthrough", "kebab-case", "snake_case"], "default": "passthrough", "description": "File name transformation strategy" },
+        "mdlg.dateFormat": { "type": "string", "default": "YYYY-MM-DD", "description": "Date insertion format" },
+        "mdlg.timeFormat": { "type": "string", "default": "HH:mm", "description": "Time insertion format" },
+        "mdlg.template": { "type": "string", "default": "", "description": "New note template" },
+        "mdlg.dailyNoteEnabled": { "type": "boolean", "default": true, "description": "Enable or disable DailyNote functionality" },
+        "mdlg.dailyNotePath": { "type": "string", "default": "dailynotes", "description": "Daily notes directory path (relative to vault root)" },
+        "mdlg.dailyNoteFormat": { "type": "string", "default": "YYYY-MM-DD.md", "description": "Daily note file name format" },
+        "mdlg.dailyNoteTemplate": { "type": "string", "default": "", "description": "Daily note template file path (relative to vault root)" },
+        "mdlg.captureSectionName": { "type": "string", "default": "Quick Notes", "description": "Section heading name inside the daily note to append captured items" },
+        "mdlg.listContinuationEnabled": { "type": "boolean", "default": true, "description": "Enable automatic continuation of lists and checkboxes when pressing Enter" },
+        "mdlg.searchSubdirectories": { "type": "boolean", "default": true, "description": "Search subdirectories when opening WikiLinks" },
         "mdlg.dailyNoteKeybindingGuide": {
           "type": "string",
           "default": "Follow the steps below",
@@ -190,55 +127,73 @@
 ### 2.2 拡張機能エントリーポイント
 
 ```typescript
-// src/extension.ts
+// src/extension.ts（簡略化した骨格）
 import * as vscode from 'vscode';
+import { ConfigurationManager } from './managers/ConfigurationManager';
 import { WikiLinkProvider } from './providers/WikiLinkProvider';
+import { WikiLinkCompletionProvider } from './providers/WikiLinkCompletionProvider';
+import { ListContinuationProvider } from './providers/ListContinuationProvider';
+import { QuickCaptureSidebarProvider } from './providers/QuickCaptureSidebarProvider';
 import { PreviewProvider } from './providers/PreviewProvider';
 import { CommandHandler } from './handlers/CommandHandler';
 import { ContextManager } from './managers/ContextManager';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('MDloggerForCode Extension is now active');
-    
-    // プロバイダー登録
-    const wikiLinkProvider = new WikiLinkProvider();
+    const configManager = new ConfigurationManager();
+    const wikiLinkProvider = new WikiLinkProvider(configManager);
+    const completionProvider = new WikiLinkCompletionProvider(configManager);
+    const listProvider = new ListContinuationProvider(configManager);
     const previewProvider = new PreviewProvider(context);
-    const commandHandler = new CommandHandler();
+    const commandHandler = new CommandHandler(configManager);
     const contextManager = new ContextManager();
-    
-    // DocumentLinkProvider登録
+
+    // WikiLinkリンク化 + 補完
     context.subscriptions.push(
         vscode.languages.registerDocumentLinkProvider(
             { scheme: 'file', language: 'markdown' },
             wikiLinkProvider
+        ),
+        vscode.languages.registerCompletionItemProvider(
+            { scheme: 'file', language: 'markdown' },
+            completionProvider,
+            '[', '/', '['
         )
     );
-    
-    // Webviewプロバイダー登録
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            'mdlg.preview',
-            previewProvider
-        )
-    );
-    
+
+    // クイックキャプチャ（DailyNote有効時のみ）
+    if (configManager.getDailyNoteEnabled()) {
+        const quickCapture = new QuickCaptureSidebarProvider(context, configManager);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider('mdlg.quickCapture', quickCapture),
+            vscode.commands.registerCommand('mdlg.openQuickCapture', () =>
+                vscode.commands.executeCommand('workbench.view.explorer').then(() =>
+                    vscode.commands.executeCommand('mdlg.quickCapture.focus')
+                )
+            )
+        );
+    }
+
     // コマンド登録
     context.subscriptions.push(
-        vscode.commands.registerCommand('mdlg.openOrCreateWikiLink', 
-            () => commandHandler.openOrCreateWikiLink()),
-        vscode.commands.registerCommand('mdlg.insertDate',
-            () => commandHandler.insertDate()),
-        vscode.commands.registerCommand('mdlg.insertTime',
-            () => commandHandler.insertTime()),
-        vscode.commands.registerCommand('mdlg.preview',
-            () => previewProvider.show())
+        vscode.commands.registerCommand('mdlg.openOrCreateWikiLink', () => commandHandler.openOrCreateWikiLink()),
+        vscode.commands.registerCommand('mdlg.insertDate', () => commandHandler.insertDate()),
+        vscode.commands.registerCommand('mdlg.insertTime', () => commandHandler.insertTime()),
+        vscode.commands.registerCommand('mdlg.preview', () => previewProvider.show()),
+        vscode.commands.registerCommand('mdlg.openDailyNote', () => commandHandler.openDailyNote()),
+        vscode.commands.registerCommand('mdlg.handleEnterKey', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+                const handled = await listProvider.handleEnterKey(editor);
+                if (!handled) {
+                    vscode.commands.executeCommand('default:type', { text: '\n' });
+                }
+            }
+        })
     );
-    
-    // エディタ変更監視（コンテキスト管理）
+
+    // コンテキスト管理
     context.subscriptions.push(
-        vscode.window.onDidChangeTextEditorSelection(
-            (e) => contextManager.updateWikiLinkContext(e)
-        )
+        vscode.window.onDidChangeTextEditorSelection(e => contextManager.updateWikiLinkContext(e))
     );
 }
 
@@ -1262,22 +1217,31 @@ describe('Configurable DailyNote Features (Isolated)', () => {
 
 ### 14.2 テスト構造最適化
 ```
-Current Test Suite (46 tests passing):
+Current Test Suite (278 tests passing, 14 skipped):
 ├── DateTimeFormatter: 24 tests
 ├── WikiLinkProcessor: 10 tests
-└── ConfigurableDailyNote (isolated): 12 tests
-    ├── Configuration Logic Tests
-    ├── DailyNote Manager Tests
-    ├── Integration Scenario Tests
-    └── Settings UI Validation Tests
+├── WikiLinkDocumentLinkProvider: 14 tests
+├── CommandHandler: 20 tests
+├── ConfigurationManager: 16 tests (11 pass / 5 skip)
+├── NoteFinder: 57 tests
+├── WikiLinkCompletionProvider: 13 tests
+├── ListContinuationProvider: 16 tests
+├── DailyNoteManager: 30 tests (25 pass / 5 skip)
+├── DailyNoteManager.appendToSection: 10 tests ✅ (IFileWriter DI enabled)
+├── WikiLinkContextProvider: 6 tests
+├── PathUtil: 27 tests (24 pass / 3 skip)
+├── QuickCaptureSidebarProvider: 15 tests
+├── NoteParser: 14 tests
+└── Integration Tests: 20 tests (19 pass / 1 skip)
 ```
 
 ### 14.3 品質保証指標
 
 #### 14.3.1 テスト品質
-- **テスト成功率**: 46/46 tests (100%)
+- **テスト成功率**: 278/292 tests (100% active tests passing)
 - **テスト構造**: VS Code API非依存による安定性
 - **カバレッジ**: Core機能の完全テスト
+- **IFileWriter DI**: ファイルI/O抽象化により appendToSection テスト有効化
 
 #### 14.3.2 コード品質
 - **コンパイル**: TypeScript strict mode成功
@@ -2292,82 +2256,73 @@ export function activate(context: vscode.ExtensionContext) {
 - **柔軟性**: サブディレクトリ検索の有効/無効を選択可能
 
 #### 17.9.2 品質向上
-- **テストカバレッジ**: 46テストケース（エラーハンドリング、エッジケース含む）
+- **テストカバレッジ**: 292テストケース（エラーハンドリング、エッジケース含む）
 - **API一貫性**: 全検索メソッドが同じ型を返却
 - **保守性**: 統一されたモックヘルパーで将来的なテスト追加が容易
 
 ---
 
-**文書バージョン**: 1.6
-**最終更新**: 2025-10-01
-**更新内容**: Enhanced Note Features設計を追加
+**文書バージョン**: 2.0
+**最終更新**: 2025-12-14
+**更新内容**: IFileWriter DI導入、appendToSectionテスト有効化、テスト数更新
 
 ## 18. Quick Capture Sidebar (クイックキャプチャサイドバー)
 
 ### 18.1 概要
-右サイドバーにクイック入力 UI を提供し、短いメモを当日の DailyNote の特定セクションへタイムスタンプ付きで自動追記する機能を追加する。加えて、Vault 内の未完了タスクを収集して一覧表示し、ワンクリックで完了・編集できるインタラクションを提供する。
+Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行メモの即時追記と DailyNote 配下の未完了タスク一覧/完了操作を提供する。DailyNote 機能が有効なときだけ登録する。
 
-### 18.2 主要な設計決定
-- 実装方式: VS Code `WebviewViewProvider` を使用して右サイドバーを実装する。
-- 設定管理: 既存の `ConfigurationManager`（設定プレフィックス: `obsd`）に以下のキーを追加する。これらは `package.json` の `contributes.configuration` に登録する。
-    - `mdlg.vaultPath` (string)
-    - `mdlg.notesFolder` (string) — daily notes のディレクトリ
-    - `mdlg.dailyNoteFormat` (string) — 例: `YYYY-MM-DD.md`
-    - `mdlg.captureSectionName` (string) — 追記対象の見出し名（例: `Quick Notes`）
+### 18.2 コンポーネントと責務
+- `QuickCaptureSidebarProvider`: WebviewViewProvider。`mdlg.quickCapture` を Explorer に登録し、`capture:add`・`request:tasks`・`task:complete` のメッセージを処理して DailyNote と TaskService を橋渡しする。`mdlg.openQuickCapture` は `workbench.view.explorer` → `mdlg.quickCapture.focus` を呼び出しビューにフォーカスする。
+- `DailyNoteManager`: 日次ノートの作成・管理を担当。`IFileWriter` を DI で受け取り、ファイル I/O を抽象化してテスト可能にしている。
+  - `getDailyNotePath` / `getDailyNoteDirectory`: `resolveVaultUri` ヘルパーを使用してパス解決ロジックを共通化。絶対/相対パス、リモート環境に対応。
+  - `appendToSection`: `NoteParser.insertIntoSection` を使用して純粋な文字列操作でセクション挿入。ファイル I/O は `IFileWriter` 経由。CRLF/LF を保持。
+  - `ensureDailyNoteExists`: ファイル存在確認と作成を `IFileWriter.exists` / `IFileWriter.write` で実施。
+- `IFileWriter`: ファイル読み書きの抽象化インターフェース。`read`/`write`/`exists`/`createDirectory` メソッドを持ち、テスト時はインメモリ実装に差し替え可能。
+- `NoteParser.insertIntoSection`: セクション検出と行挿入の純粋関数。VS Code API 非依存でユニットテスト容易。
+- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。完了時は `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
 
-### 18.3 コントラクト（小さく明確に）
-- 入力: サイドバーのテキスト入力（短文）、ユーザ操作（追加、完了、編集）
-- 出力: 当日 DailyNote の指定セクション末尾に以下の形式で1行を追記する: `- [ ] HH:mm — {content}  (from: {source})`
-- 副作用: 元ノートのタスク完了時に該当行へ `[completion: YYYY-MM-DD]` を付記し、チェックボックスを `- [x]` に更新する。
-- エラー: Vault 未設定や I/O エラー時は `vscode.window.showErrorMessage` でユーザーに通知する。
+### 18.3 設定と前提
+- 登録条件: `mdlg.dailyNoteEnabled` が true の場合にのみ Quick Capture ビューと `mdlg.openQuickCapture` コマンドを登録。
+- 主要設定: `mdlg.vaultRoot`（Vault ルート）、`mdlg.dailyNotePath` / `mdlg.dailyNoteFormat` / `mdlg.dailyNoteTemplate`（日次ノートの配置と名前付け）、`mdlg.noteExtension`、`mdlg.captureSectionName`（追記先見出し。デフォルト `Quick Notes`）、`mdlg.timeFormat`（追記行の時刻フォーマット）。タスクスキャンは `mdlg.dailyNotePath` 配下に限定する。
 
-### 18.4 Webview と拡張側のメッセージプロトコル
-- Webview → Extension:
-    - `capture:add` { content: string, source?: string }
-    - `task:complete` { uri: string, line: number, text: string }
-    - `task:edit` { uri: string, line: number, newText: string }
-    - `request:tasks` {}
+### 18.4 UI 操作
+- 入力フィールド: 1行テキスト入力。**Ctrl+Enter (Cmd+Enter on Mac)** で送信、または「Add」ボタンクリックで送信。
+- タスク一覧: DailyNote配下の未完了タスクを表示。各タスクに「Complete」ボタン。
 
-- Extension → Webview:
-    - `tasks:update` { tasks: TaskItem[] }
-    - `capture:ok` { timestamp: string }
-    - `error` { message: string }
+### 18.5 Webview メッセージプロトコル
+- Webview → Extension
+  - `capture:add` { content: string }
+  - `request:tasks`
+  - `task:complete` { payload: { uri: string; line: number } }
+- Extension → Webview
+  - `capture:ok` { timestamp: ISO string, uri: string, line: number }
+  - `tasks:update` { tasks: { uri: string; file: string; line: number; text: string }[] }
+  - `error` { message: string }
 
-TaskItem 型 (JSON 表現):
-```
-{ "uri": string, "line": number, "text": string, "file": string }
-```
+### 18.6 振る舞い詳細
+- `capture:add`: 空文字と workspace 未オープンを弾き、`appendToSection` を呼び出して挿入位置を返す。例外は `error` メッセージで通知。
+- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を `tasks:update` で返す。
+- `task:complete`: ペイロードを検証し、`completeTask(uri, line, today)` で完了タグを付与→直後に `request:tasks` と同じ経路で一覧を再送。
 
-### 18.5 ファイル操作の設計方針
-- 当日の DailyNote の検出・作成は `DailyNoteManager` を再利用する。存在しない場合はテンプレートに従って作成する。
-- 指定セクションの末尾への追記は、ファイルを読み込み、見出し（指定名）を見つけ、その見出しブロックの終端直前に行を挿入した上で `workspace.fs.writeFile` で上書きする。見出しが見つからない場合は、ファイル末尾に見出しと挿入内容を付与する。
-- タスク完了処理は元ノートの該当行をテキスト単位で置換し、末尾に `[completion: YYYY-MM-DD]` を付け、チェックボックスを `- [x]` にする。
+### 18.7 エラーハンドリングと制約
+- 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
+- 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
+- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
 
-### 18.6 ノート内タスク抽出ロジック
-- vault 配下の `.md` ファイルを `NoteFinder.getAllNotes()` で列挙し、正規表現でチェックボックス行を抽出する（例: `/^\\s*[-*+]\\s+\\[\\s*\\]\\s+(.*)$/`）。
-- 取得時はテキストとファイル URI、行番号を返す。表示は最大 N 件 (設定可能) を上限にする。
-
-### 18.7 UI 詳細（最小実装仕様）
-- 上部: 1行入力フィールド、送信ボタン（Enterで送信、Shift+Enterで改行）
-- 中央: 当日の指定セクションのプレビュー（最後5行）と「全開く」ボタン
-- 下部: 未完了タスクリスト（ファイル名と行のプレーン表示）。各アイテムに「完了」ボタンと「編集」ボタンを配置
-
-### 18.8 テスト計画
-- 単体テスト: `DailyNoteManager.appendToSection()` のユニットテスト（既存のテンプレート・見出し有無・競合ケース）
-- ユーティリティテスト: `NoteParser.extractTasks()`、`NoteParser.markTaskCompleted()` のテスト
-- E2E（手動）: サイドバーで入力 → DailyNote に追記、タスク完了ボタン→元ノートの置換検証
-
-### 18.9 既存機能との共存
-- DailyNote の作成・補完・内部リンク機能は変更しない。新 API は既存クラスに最小限の public メソッドを追加するのみ。
-
-### 18.10 未解決事項 / 将来の改善
-- サイドバーのパフォーマンス最適化（大規模 Vault のタスク列挙）: インデックス化/バックグラウンド更新を検討
-- タスク行のより堅牢な識別方法（行ID or edit-hash）: 現状はテキストマッチ方式
+### 18.8 テスト状況
+- 実装済みユニットテスト:
+  - `tests/unit/providers/QuickCaptureSidebarProvider.test.ts`
+  - `tests/unit/services/TaskService.test.ts` ✅ (MockFileWriter に exists/createDirectory 追加)
+  - `tests/unit/utils/TaskCollector.test.ts`
+  - `tests/unit/utils/NoteParser.test.ts`
+  - `tests/unit/managers/DailyNoteManager.appendToSection.test.ts` ✅ (IFileWriter DI により有効化)
+- テストカバレッジ:
+  - セクション検出・挿入位置・CRLF/LF 保持の振る舞いをユニットテストでカバー
+  - インメモリ `IFileWriter` モックにより vscode.workspace.fs 非依存でテスト可能
+  - 全テストモックが `IFileWriter` インターフェースに完全準拠
 
 ---
 
-**文書バージョン**: 1.7
-**最終更新**: 2025-10-30
-**更新内容**: Quick Capture Sidebar セクション追加
-
-
+**Document version**: 2.1
+**Last updated**: 2025-12-14
+**Update note**: TaskService.test.ts の MockFileWriter を IFileWriter インターフェースに準拠させ、コンパイルエラーを解消

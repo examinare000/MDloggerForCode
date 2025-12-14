@@ -3,13 +3,99 @@
  * Provides automated daily note creation, template management, and date-based file organization.
  *
  * @author MDloggerForCode Team
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ConfigurationManager } from './ConfigurationManager';
 import { DateTimeFormatter } from '../utils/DateTimeFormatter';
+import { IFileWriter, VscodeFileWriter, getParentDirectory } from '../services/FileWriter';
+import { insertIntoSection } from '../utils/NoteParser';
+
+/**
+ * Options for resolving vault-based paths.
+ */
+interface VaultPathOptions {
+    workspaceFolder: vscode.WorkspaceFolder;
+    vaultRoot: string;
+    relativePath: string;
+    fileName?: string;
+}
+
+/**
+ * Normalizes an absolute path for safe URI construction in remote environments.
+ * Converts Windows backslashes to forward slashes and ensures proper URI path format.
+ *
+ * @param absolutePath - The absolute path to normalize
+ * @returns Normalized path suitable for URI construction
+ */
+function normalizeAbsolutePath(absolutePath: string): string {
+    // Convert Windows backslashes to forward slashes
+    let normalized = absolutePath.replace(/\\/g, '/');
+
+    // Ensure single leading slash for absolute paths
+    if (!normalized.startsWith('/')) {
+        normalized = '/' + normalized;
+    }
+
+    // Remove duplicate slashes
+    normalized = normalized.replace(/\/+/g, '/');
+
+    return normalized;
+}
+
+/**
+ * Checks if a vault root path is absolute (Unix or Windows style).
+ */
+function isAbsoluteVaultRoot(vaultRoot: string): boolean {
+    return vaultRoot.startsWith('/') || /^[A-Za-z]:/.test(vaultRoot);
+}
+
+/**
+ * Resolves a URI based on vault root configuration.
+ * Handles both absolute and relative vault root paths, combining them with
+ * additional path segments.
+ *
+ * @param options - Path resolution options
+ * @returns Resolved URI
+ */
+function resolveVaultUri(options: VaultPathOptions): vscode.Uri {
+    const { workspaceFolder, vaultRoot, relativePath, fileName } = options;
+    const pathSegments = fileName
+        ? [relativePath, fileName].filter(Boolean)
+        : [relativePath].filter(Boolean);
+    const pathSuffix = pathSegments.join('/');
+
+    if (vaultRoot && vaultRoot.trim() !== '') {
+        if (isAbsoluteVaultRoot(vaultRoot)) {
+            const scheme = workspaceFolder.uri.scheme;
+            const fullPath = fileName
+                ? `${vaultRoot}/${relativePath}/${fileName}`
+                : `${vaultRoot}/${relativePath}`;
+
+            if (scheme === 'file') {
+                return vscode.Uri.file(fullPath);
+            } else {
+                // Remote environment: normalize path and preserve scheme
+                const normalizedVaultRoot = normalizeAbsolutePath(vaultRoot);
+                const normalizedPath = fileName
+                    ? `${normalizedVaultRoot}/${relativePath}/${fileName}`
+                    : `${normalizedVaultRoot}/${relativePath}`;
+                return workspaceFolder.uri.with({ path: normalizedPath });
+            }
+        } else {
+            // Relative vault root
+            return fileName
+                ? vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath, fileName)
+                : vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath);
+        }
+    } else {
+        // No vault root configured
+        return fileName
+            ? vscode.Uri.joinPath(workspaceFolder.uri, relativePath, fileName)
+            : vscode.Uri.joinPath(workspaceFolder.uri, relativePath);
+    }
+}
 
 /**
  * Manages daily note creation and organization.
@@ -19,37 +105,21 @@ import { DateTimeFormatter } from '../utils/DateTimeFormatter';
  * @class DailyNoteManager
  */
 export class DailyNoteManager {
+    private readonly fileWriter: IFileWriter;
+
     /**
      * Creates a new DailyNoteManager instance.
      *
      * @param configManager - Configuration manager for accessing daily note settings
      * @param dateTimeFormatter - Formatter for converting dates to file names
+     * @param fileWriter - Optional file I/O abstraction (defaults to VscodeFileWriter)
      */
     constructor(
         private configManager: ConfigurationManager,
-        private dateTimeFormatter: DateTimeFormatter
-    ) {}
-
-    /**
-     * Normalizes an absolute path for safe URI construction in remote environments.
-     * Converts Windows backslashes to forward slashes and ensures proper URI path format.
-     *
-     * @param absolutePath - The absolute path to normalize
-     * @returns Normalized path suitable for URI construction
-     */
-    private normalizeAbsolutePath(absolutePath: string): string {
-        // Convert Windows backslashes to forward slashes
-        let normalized = absolutePath.replace(/\\/g, '/');
-
-        // Ensure single leading slash for absolute paths
-        if (!normalized.startsWith('/')) {
-            normalized = '/' + normalized;
-        }
-
-        // Remove duplicate slashes
-        normalized = normalized.replace(/\/+/g, '/');
-
-        return normalized;
+        private dateTimeFormatter: DateTimeFormatter,
+        fileWriter?: IFileWriter
+    ) {
+        this.fileWriter = fileWriter ?? new VscodeFileWriter();
     }
 
     /**
@@ -80,25 +150,31 @@ export class DailyNoteManager {
         const dailyNotePath = this.configManager.getDailyNotePath();
         const vaultRoot = this.configManager.getVaultRoot();
 
-        if (vaultRoot && vaultRoot.trim() !== '') {
-            if (vaultRoot.startsWith('/') || vaultRoot.match(/^[A-Za-z]:/)) {
-                // 絶対パスの場合、ワークスペースのスキーム（file://、vscode-remote://など）を保持
-                // リモート環境でも正しく動作するように、ワークスペースURIのスキームを使用
-                const scheme = workspaceFolder.uri.scheme;
-                if (scheme === 'file') {
-                    return vscode.Uri.file(`${vaultRoot}/${dailyNotePath}/${fileName}`);
-                } else {
-                    // リモート環境の場合、正規化されたパスでURIを構築
-                    const normalizedVaultRoot = this.normalizeAbsolutePath(vaultRoot);
-                    const fullPath = `${normalizedVaultRoot}/${dailyNotePath}/${fileName}`;
-                    return workspaceFolder.uri.with({ path: fullPath });
-                }
-            } else {
-                return vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, dailyNotePath, fileName);
-            }
-        } else {
-            return vscode.Uri.joinPath(workspaceFolder.uri, dailyNotePath, fileName);
-        }
+        return resolveVaultUri({
+            workspaceFolder,
+            vaultRoot,
+            relativePath: dailyNotePath,
+            fileName
+        });
+    }
+
+    /**
+     * Resolves the directory URI containing all daily notes.
+     * Mirrors getDailyNotePath logic but without appending the file name so other
+     * features (e.g. task collection) can scope operations to the configured folder.
+     *
+     * @param workspaceFolder - The VS Code workspace folder
+     * @returns URI pointing to the daily note directory
+     */
+    getDailyNoteDirectory(workspaceFolder: vscode.WorkspaceFolder): vscode.Uri {
+        const dailyNotePath = this.configManager.getDailyNotePath();
+        const vaultRoot = this.configManager.getVaultRoot();
+
+        return resolveVaultUri({
+            workspaceFolder,
+            vaultRoot,
+            relativePath: dailyNotePath
+        });
     }
 
     /**
@@ -119,33 +195,43 @@ export class DailyNoteManager {
 
         try {
             const vaultRoot = this.configManager.getVaultRoot();
-            let templateUri: vscode.Uri;
+            const templateUri = resolveVaultUri({
+                workspaceFolder,
+                vaultRoot,
+                relativePath: templatePath
+            });
 
-            if (vaultRoot && vaultRoot.trim() !== '') {
-                if (vaultRoot.startsWith('/') || vaultRoot.match(/^[A-Za-z]:/)) {
-                    // 絶対パスの場合、ワークスペースのスキームを保持
-                    const scheme = workspaceFolder.uri.scheme;
-                    if (scheme === 'file') {
-                        templateUri = vscode.Uri.file(`${vaultRoot}/${templatePath}`);
-                    } else {
-                        // リモート環境の場合、正規化されたパスでURIを構築
-                        const normalizedVaultRoot = this.normalizeAbsolutePath(vaultRoot);
-                        const fullPath = `${normalizedVaultRoot}/${templatePath}`;
-                        templateUri = workspaceFolder.uri.with({ path: fullPath });
-                    }
-                } else {
-                    templateUri = vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, templatePath);
-                }
-            } else {
-                templateUri = vscode.Uri.joinPath(workspaceFolder.uri, templatePath);
-            }
-
-            const data = await vscode.workspace.fs.readFile(templateUri);
-            return new TextDecoder().decode(data);
+            return await this.fileWriter.read(templateUri);
         } catch (error) {
             // テンプレートファイルが見つからない場合は空文字列を返す
             return '';
         }
+    }
+
+    /**
+     * Ensures the daily note file exists, creating it with template content if not.
+     * Does not open the file in the editor.
+     *
+     * @param workspaceFolder - The VS Code workspace folder
+     * @param date - The date for the daily note (defaults to current date)
+     * @returns The URI of the daily note file
+     */
+    async ensureDailyNoteExists(workspaceFolder: vscode.WorkspaceFolder, date: Date = new Date()): Promise<vscode.Uri> {
+        const dailyNoteUri = this.getDailyNotePath(workspaceFolder, date);
+
+        const exists = await this.fileWriter.exists(dailyNoteUri);
+        if (!exists) {
+            const templateContent = await this.getTemplateContent(workspaceFolder);
+
+            // Ensure parent directory exists
+            const dirUri = getParentDirectory(dailyNoteUri);
+            await this.fileWriter.createDirectory(dirUri);
+
+            // Create file with template content
+            await this.fileWriter.write(dailyNoteUri, templateContent);
+        }
+
+        return dailyNoteUri;
     }
 
     /**
@@ -158,36 +244,14 @@ export class DailyNoteManager {
      * @throws {Error} When file creation or opening fails
      */
     async openOrCreateDailyNote(workspaceFolder: vscode.WorkspaceFolder, date: Date = new Date()): Promise<void> {
-        const dailyNoteUri = this.getDailyNotePath(workspaceFolder, date);
-
-        try {
-            // ファイルが既に存在するかチェック
-            await vscode.workspace.fs.stat(dailyNoteUri);
-            // 存在する場合はそのまま開く
-            await vscode.window.showTextDocument(dailyNoteUri);
-        } catch {
-            // ファイルが存在しない場合は新規作成
-            const templateContent = await this.getTemplateContent(workspaceFolder);
-            const data = new TextEncoder().encode(templateContent);
-
-            // ディレクトリが存在しない場合は作成
-            // 元のURIのスキームを保持して親ディレクトリURIを作成
-            const uriPath = dailyNoteUri.path || dailyNoteUri.fsPath;
-            const dirPath = path.dirname(uriPath);
-            const dirUri = dailyNoteUri.with({ path: dirPath });
-            await vscode.workspace.fs.createDirectory(dirUri);
-
-            // ファイル作成
-            await vscode.workspace.fs.writeFile(dailyNoteUri, data);
-
-            // 新しいタブで開く
-            await vscode.window.showTextDocument(dailyNoteUri);
-        }
+        const dailyNoteUri = await this.ensureDailyNoteExists(workspaceFolder, date);
+        await vscode.window.showTextDocument(dailyNoteUri);
     }
 
     /**
      * Appends a captured line to a named section inside today's daily note.
      * If the daily note or the section does not exist, they will be created.
+     * Uses NoteParser.insertIntoSection for pure string manipulation.
      *
      * @param workspaceFolder - The VS Code workspace folder
      * @param content - The content to append (single-line)
@@ -202,57 +266,24 @@ export class DailyNoteManager {
         date: Date = new Date()
     ): Promise<{ uri: vscode.Uri; line: number }> {
         const targetSection = sectionName || this.configManager.getCaptureSectionName();
-        const dailyUri = this.getDailyNotePath(workspaceFolder, date);
 
         // Ensure file exists (creates if necessary)
-        await this.openOrCreateDailyNote(workspaceFolder, date);
+        const dailyUri = await this.ensureDailyNoteExists(workspaceFolder, date);
 
-        // Read file
-        const raw = await vscode.workspace.fs.readFile(dailyUri);
-        const text = new TextDecoder().decode(raw);
-        const lines = text.split(/\r?\n/);
-
-        // Find the section heading (match heading lines like # Heading or ## Heading)
-        const escaped = targetSection.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const headingRegex = new RegExp(`^#{1,6}\\s*${escaped}\\s*$`, 'i');
-
-        let insertLine = lines.length; // default append at end
-        let found = false;
-
-        for (let i = 0; i < lines.length; i++) {
-            if (headingRegex.test(lines[i])) {
-                found = true;
-                // find next heading index
-                let j = i + 1;
-                for (; j < lines.length; j++) {
-                    if (/^#{1,6}\s+/.test(lines[j])) {
-                        break;
-                    }
-                }
-                insertLine = j; // insert before next heading (or at EOF)
-                break;
-            }
-        }
-
-        // If section not found, append heading and then the content
-        if (!found) {
-            lines.push('');
-            lines.push(`## ${targetSection}`);
-            insertLine = lines.length; // after the new heading
-        }
+        // Read file content
+        const text = await this.fileWriter.read(dailyUri);
 
         // Create the capture line with timestamp
         const timeFormat = this.configManager.getTimeFormat();
         const timeString = this.dateTimeFormatter.formatTime(new Date(), timeFormat);
         const lineText = `- [ ] ${timeString} — ${content}`;
 
-        // Insert the new line
-        lines.splice(insertLine, 0, lineText);
+        // Use NoteParser for pure string manipulation
+        const { newContent, line } = insertIntoSection(text, targetSection, lineText);
 
         // Write back
-        const newText = lines.join('\n');
-        await vscode.workspace.fs.writeFile(dailyUri, new TextEncoder().encode(newText));
+        await this.fileWriter.write(dailyUri, newContent);
 
-        return { uri: dailyUri, line: insertLine };
+        return { uri: dailyUri, line };
     }
 }

@@ -19,6 +19,14 @@ class MockFileWriter implements IFileWriter {
         this.store[uri.fsPath] = content;
     }
 
+    async exists(uri: vscode.Uri): Promise<boolean> {
+        return uri.fsPath in this.store;
+    }
+
+    async createDirectory(_uri: vscode.Uri): Promise<void> {
+        // No-op for in-memory store
+    }
+
     getContent(pathStr: string) {
         return this.store[pathStr];
     }
