@@ -18,7 +18,7 @@ export type SlugStrategy = 'passthrough' | 'kebab-case' | 'snake_case';
  * Complete configuration object for the MDloggerForCode extension.
  * Contains all user-configurable settings with their current values.
  */
-export interface ObsdConfiguration {
+export interface MdlgConfiguration {
     readonly vaultRoot: string;
     readonly noteExtension: string;
     readonly slugStrategy: SlugStrategy;
@@ -40,7 +40,7 @@ export interface ObsdConfiguration {
  * Used when a configuration value is invalid and prevents normal operation.
  */
 export interface ValidationError {
-    readonly field: keyof ObsdConfiguration;
+    readonly field: keyof MdlgConfiguration;
     readonly message: string;
     readonly code: string;
 }
@@ -50,7 +50,7 @@ export interface ValidationError {
  * Used when a configuration value is suboptimal but doesn't prevent operation.
  */
 export interface ValidationWarning {
-    readonly field: keyof ObsdConfiguration;
+    readonly field: keyof MdlgConfiguration;
     readonly message: string;
     readonly recommendedValue?: string;
 }
@@ -89,7 +89,7 @@ export interface WorkspaceConfiguration {
  */
 export class ConfigurationManager {
     private static readonly configSection = 'mdlg';
-    private changeListeners: ((config: ObsdConfiguration) => void)[] = [];
+    private changeListeners: ((config: MdlgConfiguration) => void)[] = [];
     
     /**
      * Creates a new ConfigurationManager instance.
@@ -229,7 +229,7 @@ export class ConfigurationManager {
      *
      * @returns Complete configuration with all current values
      */
-    getConfiguration(): ObsdConfiguration {
+    getConfiguration(): MdlgConfiguration {
         return {
             vaultRoot: this.getVaultRoot(),
             noteExtension: this.getNoteExtension(),
@@ -255,7 +255,7 @@ export class ConfigurationManager {
      * @param config - Partial configuration to validate
      * @returns Validation result with errors and warnings
      */
-    validateConfiguration(config: Partial<ObsdConfiguration>): ValidationResult {
+    validateConfiguration(config: Partial<MdlgConfiguration>): ValidationResult {
         const errors: ValidationError[] = [];
         const warnings: ValidationWarning[] = [];
 
@@ -299,7 +299,7 @@ export class ConfigurationManager {
      * @param callback - Function to call when configuration changes
      * @returns Disposable to unregister the callback
      */
-    onConfigurationChanged(callback: (config: ObsdConfiguration) => void): Disposable {
+    onConfigurationChanged(callback: (config: MdlgConfiguration) => void): Disposable {
         this.changeListeners.push(callback);
         
         return {

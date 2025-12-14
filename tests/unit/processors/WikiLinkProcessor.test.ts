@@ -1,4 +1,4 @@
-import { describe, it } from 'mocha';
+import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import { WikiLinkProcessor, ParsedWikiLink, WikiLinkError } from '../../../src/processors/WikiLinkProcessor';
 

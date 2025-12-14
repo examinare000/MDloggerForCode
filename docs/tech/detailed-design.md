@@ -604,7 +604,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 export class ConfigurationManager {
-    private static readonly CONFIG_SECTION = 'obsd';
+    private static readonly CONFIG_SECTION = 'mdlg';
     
     getVaultRoot(fallbackUri?: vscode.Uri): vscode.Uri {
         const config = vscode.workspace.getConfiguration(ConfigurationManager.CONFIG_SECTION);
@@ -2041,7 +2041,7 @@ export class ListContinuationProvider {
 #### 17.5.2 ConfigurationManager拡張
 ```typescript
 // src/managers/ConfigurationManager.ts に追加
-export interface ObsdConfiguration {
+export interface MdlgConfiguration {
     // 既存フィールド...
     readonly listContinuationEnabled: boolean;
     readonly searchSubdirectories: boolean;
@@ -2056,7 +2056,7 @@ export class ConfigurationManager {
         return this.config.get<boolean>('searchSubdirectories', true);
     }
 
-    getConfiguration(): ObsdConfiguration {
+    getConfiguration(): MdlgConfiguration {
         return {
             // 既存フィールド...
             listContinuationEnabled: this.getListContinuationEnabled(),

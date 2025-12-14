@@ -1,3 +1,4 @@
+import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import * as vscode from 'vscode';
 import { DailyNoteManager } from '../../../src/managers/DailyNoteManager';

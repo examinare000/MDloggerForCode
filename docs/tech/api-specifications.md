@@ -38,9 +38,9 @@ interface WikiLinkInfo {
 
 ### 2.2 設定関連インターフェース
 
-#### 2.2.1 ObsdConfiguration
+#### 2.2.1 MdlgConfiguration
 ```typescript
-interface ObsdConfiguration {
+interface MdlgConfiguration {
   /** Vaultルートパス */
   vaultRoot: string;
   /** ノートファイル拡張子 */
@@ -208,21 +208,21 @@ class ConfigurationManager {
    * 全設定を取得
    * @returns 設定オブジェクト
    */
-  getConfiguration(): ObsdConfiguration;
+  getConfiguration(): MdlgConfiguration;
   
   /**
    * 設定変更監視リスナーを登録
    * @param callback 設定変更時のコールバック
    * @returns Disposable
    */
-  onConfigurationChanged(callback: (config: ObsdConfiguration) => void): vscode.Disposable;
+  onConfigurationChanged(callback: (config: MdlgConfiguration) => void): vscode.Disposable;
   
   /**
    * 設定値のバリデーション
    * @param config 検証対象設定
    * @returns 検証結果
    */
-  validateConfiguration(config: Partial<ObsdConfiguration>): ValidationResult;
+  validateConfiguration(config: Partial<MdlgConfiguration>): ValidationResult;
 }
 ```
 
@@ -239,7 +239,7 @@ interface ValidationResult {
 
 interface ValidationError {
   /** エラーが発生した設定項目 */
-  field: keyof ObsdConfiguration;
+  field: keyof MdlgConfiguration;
   /** エラーメッセージ */
   message: string;
   /** エラーコード */
@@ -248,7 +248,7 @@ interface ValidationError {
 
 interface ValidationWarning {
   /** 警告が発生した設定項目 */
-  field: keyof ObsdConfiguration;
+  field: keyof MdlgConfiguration;
   /** 警告メッセージ */
   message: string;
   /** 推奨値（存在する場合） */
@@ -684,7 +684,7 @@ type QuickCaptureOutMessage =
 
 ### 6.1 エラーコード一覧
 ```typescript
-enum ObsdErrorCode {
+enum MdlgErrorCode {
   // WikiLink関連
   WIKILINK_INVALID_FORMAT = 'WIKILINK_INVALID_FORMAT',
   WIKILINK_FILE_NOT_FOUND = 'WIKILINK_FILE_NOT_FOUND',
@@ -708,9 +708,9 @@ enum ObsdErrorCode {
 
 ### 6.2 エラーレスポンス形式
 ```typescript
-interface ObsdError {
+interface MdlgError {
   /** エラーコード */
-  code: ObsdErrorCode;
+  code: MdlgErrorCode;
   /** エラーメッセージ */
   message: string;
   /** エラー詳細情報 */

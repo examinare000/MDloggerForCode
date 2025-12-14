@@ -1,4 +1,4 @@
-import { describe, it } from 'mocha';
+import { describe, it, before } from 'mocha';
 import { expect } from 'chai';
 import * as path from 'path';
 
@@ -46,7 +46,7 @@ describe('PathUtil (Node.js path.isAbsolute Implementation)', () => {
   describe('isAbsolutePath (using path.isAbsolute)', () => {
     // 1. Windows環境での様々なパス形式のテスト
     // Note: These tests are environment-dependent and will only pass on Windows
-    context('when on Windows-like environment', () => {
+    describe('when on Windows-like environment', () => {
       before(function() {
         // Skip these tests on non-Windows platforms
         if (process.platform !== 'win32') {
@@ -73,7 +73,7 @@ describe('PathUtil (Node.js path.isAbsolute Implementation)', () => {
       });
     });
 
-    context('when on POSIX-like environment', () => {
+    describe('when on POSIX-like environment', () => {
       it('should return true for absolute paths', () => {
         expect(UpdatedPathUtil.isAbsolutePath('/home/user/documents')).to.be.true;
         expect(UpdatedPathUtil.isAbsolutePath('/usr/local/bin')).to.be.true;
@@ -82,7 +82,7 @@ describe('PathUtil (Node.js path.isAbsolute Implementation)', () => {
     });
 
     // 3. 既存機能の回帰テスト (相対パス)
-    context('for relative paths', () => {
+    describe('for relative paths', () => {
       it('should return false for relative paths', () => {
         expect(UpdatedPathUtil.isAbsolutePath('relative/path')).to.be.false;
         expect(UpdatedPathUtil.isAbsolutePath('./relative/path')).to.be.false;
@@ -92,7 +92,7 @@ describe('PathUtil (Node.js path.isAbsolute Implementation)', () => {
     });
 
     // 4. エラーケースのテスト
-    context('for edge cases and invalid paths', () => {
+    describe('for edge cases and invalid paths', () => {
       it('should return correct results for incomplete or invalid paths', () => {
         expect(UpdatedPathUtil.isAbsolutePath('')).to.be.false;
         expect(UpdatedPathUtil.isAbsolutePath('C:')).to.be.false; // ドライブレターのみ

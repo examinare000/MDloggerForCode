@@ -33,24 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Configuration Manager初期化
     let configManager: ConfigurationManager;
     try {
-        const newConfig = vscode.workspace.getConfiguration('mdlg');
-        const legacyConfig = vscode.workspace.getConfiguration('obsd');
-        const mergedConfig = {
-            get<T>(key: string, defaultValue?: T): T {
-                const val = newConfig.get<T>(key, undefined as unknown as T);
-                if (val !== undefined) {
-                    return val as T;
-                }
-                return legacyConfig.get<T>(key, defaultValue as T);
-            },
-            has(key: string): boolean {
-                return newConfig.has(key) || legacyConfig.has(key);
-            },
-            update(key: string, value: any) {
-                return newConfig.update(key, value);
-            }
-        };
-        configManager = new ConfigurationManager(mergedConfig);
+        configManager = new ConfigurationManager(vscode.workspace.getConfiguration('mdlg'));
     } catch (error) {
         vscode.window.showErrorMessage('Failed to initialize ConfigurationManager');
         return;
@@ -248,7 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
     // 設定変更の監視
     try {
         const configChangeListener = vscode.workspace.onDidChangeConfiguration(e => {
-            if (e.affectsConfiguration('obsd')) {
+            if (e.affectsConfiguration('mdlg')) {
                 configManager.triggerConfigurationChanged();
             }
         });
