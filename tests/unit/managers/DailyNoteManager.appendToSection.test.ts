@@ -3,31 +3,26 @@ import * as vscode from 'vscode';
 import { DailyNoteManager } from '../../../src/managers/DailyNoteManager';
 import { ConfigurationManager } from '../../../src/managers/ConfigurationManager';
 import { DateTimeFormatter } from '../../../src/utils/DateTimeFormatter';
+import { IFileWriter } from '../../../src/services/FileWriter';
 
 /**
- * NOTE: これらのテストは現在スキップされています。
+ * DailyNoteManager.appendToSection のユニットテスト
  *
- * 理由:
- * - DailyNoteManager.appendToSectionはvscode.workspace.fsに強く依存している
- * - 単体テストでvscode.workspace.fsを適切にモックするのは複雑で脆い
- * - より適切なアプローチは統合テストでカバーすること
- *
- * 今後の改善:
- * - IFileSystemのような抽象化レイヤーを導入して依存性注入を可能にする
- * - または統合テストスイートを充実させる
+ * IFileWriter を DI することで、vscode.workspace.fs に依存せずテスト可能になりました。
  */
-describe.skip('DailyNoteManager.appendToSection', () => {
+describe('DailyNoteManager.appendToSection', () => {
     let dailyNoteManager: DailyNoteManager;
     let mockConfigManager: ConfigurationManager;
     let mockDateTimeFormatter: DateTimeFormatter;
     let mockWorkspaceFolder: vscode.WorkspaceFolder;
-    let fileStore: Map<string, Uint8Array>;
+    let mockFileWriter: IFileWriter;
+    let fileStore: Map<string, string>;
 
     beforeEach(() => {
-        // ファイルストアの初期化
+        // In-memory file store
         fileStore = new Map();
 
-        // ConfigurationManagerのモック
+        // ConfigurationManager mock
         mockConfigManager = {
             getDailyNoteTemplate: () => '',
             getDailyNotePath: () => 'dailynotes',
@@ -38,50 +33,72 @@ describe.skip('DailyNoteManager.appendToSection', () => {
             getCaptureSectionName: () => 'Quick Notes'
         } as any;
 
-        // DateTimeFormatterのモック
+        // DateTimeFormatter mock with fixed time for predictable tests
         mockDateTimeFormatter = {
             formatDate: (date: Date, _format: string) => {
                 return date.toISOString().split('T')[0];
             },
-            formatTime: (date: Date, _format: string) => {
-                const hours = String(date.getHours()).padStart(2, '0');
-                const minutes = String(date.getMinutes()).padStart(2, '0');
-                return `${hours}:${minutes}`;
+            formatTime: (_date: Date, _format: string) => {
+                // Return fixed time for predictable test output
+                return '14:30';
             }
         } as any;
 
-        // WorkspaceFolderのモック
+        // WorkspaceFolder mock
         mockWorkspaceFolder = {
             uri: vscode.Uri.file('/test/workspace'),
             name: 'test-workspace',
             index: 0
         };
 
-        dailyNoteManager = new DailyNoteManager(mockConfigManager, mockDateTimeFormatter);
+        // IFileWriter mock using in-memory store
+        mockFileWriter = {
+            read: async (uri: vscode.Uri): Promise<string> => {
+                const content = fileStore.get(uri.fsPath);
+                if (content === undefined) {
+                    throw new Error('File not found');
+                }
+                return content;
+            },
+            write: async (uri: vscode.Uri, content: string): Promise<void> => {
+                fileStore.set(uri.fsPath, content);
+            },
+            exists: async (uri: vscode.Uri): Promise<boolean> => {
+                return fileStore.has(uri.fsPath);
+            },
+            createDirectory: async (_uri: vscode.Uri): Promise<void> => {
+                // No-op for in-memory store
+            }
+        };
+
+        dailyNoteManager = new DailyNoteManager(
+            mockConfigManager,
+            mockDateTimeFormatter,
+            mockFileWriter
+        );
     });
 
     describe('空ファイルへのセクション作成と追記', () => {
         it('should create section and append content to empty file', async () => {
-            // Red phase: このテストは失敗するはず（実装を検証するため）
             const testDate = new Date('2025-11-07T14:30:00');
             const content = 'Test capture content';
 
-            // 空ファイルを作成
+            // Create empty file
             const dailyNoteUri = vscode.Uri.file('/test/workspace/dailynotes/2025-11-07.md');
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(''));
+            fileStore.set(dailyNoteUri.fsPath, '');
 
             const result = await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
                 content,
-                undefined, // デフォルトセクション名を使用
+                undefined, // Use default section name
                 testDate
             );
 
             expect(result.uri.fsPath).to.equal(dailyNoteUri.fsPath);
             expect(result.line).to.be.a('number');
 
-            // ファイル内容を確認
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            // Check file contents
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
             expect(fileContent).to.include('## Quick Notes');
             expect(fileContent).to.include('14:30 — Test capture content');
             expect(fileContent).to.match(/- \[ \] 14:30 — Test capture content/);
@@ -102,7 +119,7 @@ describe.skip('DailyNoteManager.appendToSection', () => {
 ## Other Section
 Some other content`;
 
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(initialContent));
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
 
             const result = await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -111,17 +128,17 @@ Some other content`;
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
-            // 既存タスクが保持されていることを確認
+            // Verify existing task is preserved
             expect(fileContent).to.include('- [ ] 10:00 — First task');
 
-            // 新しいタスクが追加されていることを確認
-            expect(fileContent).to.include('- [ ] 15:45 — Another task');
+            // Verify new task is added
+            expect(fileContent).to.include('- [ ] 14:30 — Another task');
 
-            // Quick Notesセクションの後、Other Sectionの前に挿入されていることを確認
+            // Verify insertion order: Quick Notes < new task < Other Section
             const quickNotesIndex = fileContent.indexOf('## Quick Notes');
-            const newTaskIndex = fileContent.indexOf('- [ ] 15:45 — Another task');
+            const newTaskIndex = fileContent.indexOf('- [ ] 14:30 — Another task');
             const otherSectionIndex = fileContent.indexOf('## Other Section');
 
             expect(quickNotesIndex).to.be.lessThan(newTaskIndex);
@@ -149,7 +166,7 @@ Content 2
 ## Section 3
 Content 3`;
 
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(initialContent));
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
 
             await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -158,13 +175,13 @@ Content 3`;
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
-            // 新しいタスクがQuick NotesとSection 2の間に挿入されることを確認
+            // Verify new task is inserted between Quick Notes and Section 2
             const lines = fileContent.split('\n');
             const quickNotesIndex = lines.findIndex(line => line.includes('## Quick Notes'));
             const section2Index = lines.findIndex(line => line.includes('## Section 2'));
-            const newTaskIndex = lines.findIndex(line => line.includes('16:00 — Middle task'));
+            const newTaskIndex = lines.findIndex(line => line.includes('14:30 — Middle task'));
 
             expect(newTaskIndex).to.be.greaterThan(quickNotesIndex);
             expect(newTaskIndex).to.be.lessThan(section2Index);
@@ -182,7 +199,7 @@ Content 3`;
 ## Existing Section
 Some content`;
 
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(initialContent));
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
 
             await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -191,11 +208,11 @@ Some content`;
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
-            // 新しいセクションが作成されることを確認
+            // Verify new section is created
             expect(fileContent).to.include('## Quick Notes');
-            expect(fileContent).to.include('- [ ] 17:00 — New section task');
+            expect(fileContent).to.include('- [ ] 14:30 — New section task');
         });
 
         it('should create section with custom name', async () => {
@@ -204,7 +221,7 @@ Some content`;
             const customSectionName = 'My Custom Section';
 
             const dailyNoteUri = vscode.Uri.file('/test/workspace/dailynotes/2025-11-07.md');
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode('# Daily Note\n'));
+            fileStore.set(dailyNoteUri.fsPath, '# Daily Note\n');
 
             await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -213,10 +230,10 @@ Some content`;
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
             expect(fileContent).to.include(`## ${customSectionName}`);
-            expect(fileContent).to.include('- [ ] 18:00 — Custom section task');
+            expect(fileContent).to.include('- [ ] 14:30 — Custom section task');
         });
     });
 
@@ -226,7 +243,7 @@ Some content`;
             const content = 'Formatted task';
 
             const dailyNoteUri = vscode.Uri.file('/test/workspace/dailynotes/2025-11-07.md');
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(''));
+            fileStore.set(dailyNoteUri.fsPath, '');
 
             await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -235,10 +252,10 @@ Some content`;
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
-            // フォーマット: "- [ ] HH:mm — content"
-            expect(fileContent).to.match(/- \[ \] 09:05 — Formatted task/);
+            // Format: "- [ ] HH:mm — content"
+            expect(fileContent).to.match(/- \[ \] 14:30 — Formatted task/);
         });
     });
 
@@ -246,6 +263,8 @@ Some content`;
         it('should create file if it does not exist', async () => {
             const testDate = new Date('2025-11-07T20:00:00');
             const content = 'Task in new file';
+
+            // Do not pre-create the file
 
             const result = await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -257,12 +276,11 @@ Some content`;
             expect(result.uri.fsPath).to.include('2025-11-07.md');
             expect(result.line).to.be.a('number');
 
-            // ファイルが作成され、内容が書き込まれたことを確認
-            const fileContent = new TextDecoder().decode(
-                fileStore.get(result.uri.fsPath) || new Uint8Array()
-            );
+            // Verify file was created with content
+            const fileContent = fileStore.get(result.uri.fsPath);
+            expect(fileContent).to.exist;
             expect(fileContent).to.include('## Quick Notes');
-            expect(fileContent).to.include('20:00 — Task in new file');
+            expect(fileContent).to.include('14:30 — Task in new file');
         });
     });
 
@@ -280,7 +298,7 @@ Content 1
 ## Quick Notes
 - [ ] 10:00 — Task 1`;
 
-            fileStore.set(dailyNoteUri.fsPath, new TextEncoder().encode(initialContent));
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
 
             await dailyNoteManager.appendToSection(
                 mockWorkspaceFolder,
@@ -289,17 +307,60 @@ Content 1
                 testDate
             );
 
-            const fileContent = new TextDecoder().decode(fileStore.get(dailyNoteUri.fsPath));
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
 
-            // 新しいタスクがファイル末尾に追記されることを確認
+            // Verify new task is appended after existing task
             const lines = fileContent.split('\n');
-            const lastLine = lines[lines.length - 1];
-            const secondLastLine = lines[lines.length - 2];
+            const task1Index = lines.findIndex(line => line.includes('10:00 — Task 1'));
+            const newTaskIndex = lines.findIndex(line => line.includes('14:30 — Last section task'));
 
-            // 最後または最後から2番目の行に新しいタスクがあることを確認
-            const hasTaskAtEnd = lastLine.includes('21:00 — Last section task') ||
-                                 secondLastLine.includes('21:00 — Last section task');
-            expect(hasTaskAtEnd).to.be.true;
+            expect(newTaskIndex).to.be.greaterThan(task1Index);
+        });
+    });
+
+    describe('CRLF/LF normalization', () => {
+        it('should preserve CRLF line endings when present', async () => {
+            const testDate = new Date('2025-11-07T12:00:00');
+            const content = 'Task with CRLF';
+
+            const dailyNoteUri = vscode.Uri.file('/test/workspace/dailynotes/2025-11-07.md');
+            const initialContent = '# Daily Note\r\n\r\n## Quick Notes\r\n- [ ] 10:00 — Task 1';
+
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
+
+            await dailyNoteManager.appendToSection(
+                mockWorkspaceFolder,
+                content,
+                undefined,
+                testDate
+            );
+
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
+
+            // CRLF should be preserved
+            expect(fileContent).to.include('\r\n');
+        });
+
+        it('should use LF for files without CRLF', async () => {
+            const testDate = new Date('2025-11-07T12:00:00');
+            const content = 'Task with LF';
+
+            const dailyNoteUri = vscode.Uri.file('/test/workspace/dailynotes/2025-11-07.md');
+            const initialContent = '# Daily Note\n\n## Quick Notes\n- [ ] 10:00 — Task 1';
+
+            fileStore.set(dailyNoteUri.fsPath, initialContent);
+
+            await dailyNoteManager.appendToSection(
+                mockWorkspaceFolder,
+                content,
+                undefined,
+                testDate
+            );
+
+            const fileContent = fileStore.get(dailyNoteUri.fsPath)!;
+
+            // Should not have CRLF
+            expect(fileContent).to.not.include('\r\n');
         });
     });
 });
