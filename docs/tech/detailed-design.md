@@ -1,9 +1,9 @@
 # MDloggerForCode 詳細設計書
 
-> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.11 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定）を反映。
+> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.12 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI）を反映。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.11 (2025-11-19 時点)
-> テスト品質: 272/272 tests (100%)
+> 現在バージョン: v0.4.12 (2025-12-14 時点)
+> テスト品質: 278/292 tests passing (14 skipped)
 
 ## 1. アーキテクチャ概要
 
@@ -12,7 +12,7 @@
 ┌──────────────────────────────────────────────────────┐
 │                 VS Code Host                         │
 ├──────────────────────────────────────────────────────┤
-│  MDloggerForCode Extension (v0.4.11)              │
+│  MDloggerForCode Extension (v0.4.12)              │
 │  ┌──────────────┐  ┌────────────────────────────┐   │
 │  │  Extension   │  │   Providers                │   │
 │  │   Host       │←→│  - DocumentLink            │   │
@@ -1217,22 +1217,31 @@ describe('Configurable DailyNote Features (Isolated)', () => {
 
 ### 14.2 テスト構造最適化
 ```
-Current Test Suite (46 tests passing):
+Current Test Suite (278 tests passing, 14 skipped):
 ├── DateTimeFormatter: 24 tests
 ├── WikiLinkProcessor: 10 tests
-└── ConfigurableDailyNote (isolated): 12 tests
-    ├── Configuration Logic Tests
-    ├── DailyNote Manager Tests
-    ├── Integration Scenario Tests
-    └── Settings UI Validation Tests
+├── WikiLinkDocumentLinkProvider: 14 tests
+├── CommandHandler: 20 tests
+├── ConfigurationManager: 16 tests (11 pass / 5 skip)
+├── NoteFinder: 57 tests
+├── WikiLinkCompletionProvider: 13 tests
+├── ListContinuationProvider: 16 tests
+├── DailyNoteManager: 30 tests (25 pass / 5 skip)
+├── DailyNoteManager.appendToSection: 10 tests ✅ (IFileWriter DI enabled)
+├── WikiLinkContextProvider: 6 tests
+├── PathUtil: 27 tests (24 pass / 3 skip)
+├── QuickCaptureSidebarProvider: 15 tests
+├── NoteParser: 14 tests
+└── Integration Tests: 20 tests (19 pass / 1 skip)
 ```
 
 ### 14.3 品質保証指標
 
 #### 14.3.1 テスト品質
-- **テスト成功率**: 46/46 tests (100%)
+- **テスト成功率**: 278/292 tests (100% active tests passing)
 - **テスト構造**: VS Code API非依存による安定性
 - **カバレッジ**: Core機能の完全テスト
+- **IFileWriter DI**: ファイルI/O抽象化により appendToSection テスト有効化
 
 #### 14.3.2 コード品質
 - **コンパイル**: TypeScript strict mode成功
@@ -2247,15 +2256,15 @@ export function activate(context: vscode.ExtensionContext) {
 - **柔軟性**: サブディレクトリ検索の有効/無効を選択可能
 
 #### 17.9.2 品質向上
-- **テストカバレッジ**: 46テストケース（エラーハンドリング、エッジケース含む）
+- **テストカバレッジ**: 292テストケース（エラーハンドリング、エッジケース含む）
 - **API一貫性**: 全検索メソッドが同じ型を返却
 - **保守性**: 統一されたモックヘルパーで将来的なテスト追加が容易
 
 ---
 
-**文書バージョン**: 1.6
-**最終更新**: 2025-10-01
-**更新内容**: Enhanced Note Features設計を追加
+**文書バージョン**: 2.0
+**最終更新**: 2025-12-14
+**更新内容**: IFileWriter DI導入、appendToSectionテスト有効化、テスト数更新
 
 ## 18. Quick Capture Sidebar (クイックキャプチャサイドバー)
 

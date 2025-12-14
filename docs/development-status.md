@@ -9,7 +9,7 @@
 - **開発期間**: 2025-09-09 ～ 2025-12-14 (継続開発)
 - **開発手法**: Test-Driven Development (TDD) - t-wada方式
 - **現在バージョン**: v0.4.12
-- **テスト数**: 278個 (264パス / 14スキップ)
+- **テスト数**: 292個 (278パス / 14スキップ)
 - **テスト成功率**: 100% (スキップ除外時)
 - **コンポーネント数**: 13個
 - **ADR記録**: 19件
@@ -207,14 +207,17 @@
 - **WikiLinkDocumentLinkProvider**: 14 ケース（全パス）
 - **CommandHandler**: 20 ケース（全パス）
 - **ConfigurationManager**: 16 ケース（11 パス / 5 スキップ）
-- **NoteFinder**: 20 ケース（全パス）
+- **NoteFinder**: 57 ケース（全パス）
 - **WikiLinkCompletionProvider**: 13 ケース（全パス）
 - **ListContinuationProvider**: 16 ケース（全パス）
-- **DailyNoteManager**: 20 ケース（19 パス / 1 スキップ）
+- **DailyNoteManager**: 30 ケース（25 パス / 5 スキップ）
+- **DailyNoteManager.appendToSection**: 10 ケース（全パス）
 - **WikiLinkContextProvider**: 6 ケース（全パス）
 - **PathUtil**: 27 ケース（24 パス / 3 スキップ）
-- **統合テスト群**: 45 ケース（44 パス / 1 スキップ）
-- **総計**: 272 ケース（254 パス / 18 スキップ）
+- **QuickCaptureSidebarProvider**: 15 ケース（全パス）
+- **NoteParser**: 14 ケース（全パス）
+- **統合テスト群**: 20 ケース（19 パス / 1 スキップ）
+- **総計**: 292 ケース（278 パス / 14 スキップ）
 
 ### 開発インフラ強化
 - ? **Git戦略**: GitFlowベースのブランチ戦略確立
@@ -245,13 +248,11 @@
 - Markdownプレビュー機能の本格実装
 - グラフビュー機能
 - 他エディタへの移植（設計により容易）
-- Quick Capture / DailyNote append の I/O 抽象化（スキップテスト解消）
 
-### Quick Capture テスト負債解消計画
-1. **I/O抽象化**: `DailyNoteManager.appendToSection` の読み書きを `IFileReader/IFileWriter` に切り出し、NoteParser.insertIntoSection を再利用して純粋関数化。
-2. **改行・セクション挙動テスト**: CRLF→LF正規化、新規セクション生成、末尾/見出し前への挿入など主要シナリオのユニットテストを追加。
-3. **境界・制約テスト**: タスク走査上限(200件)超え、DailyNote無効時の未登録動作、並行書き込み競合時の挙動をシナリオテストで確認。
-4. **CI組込み**: 新テストを標準ユニットスイートに編成し、スキップタグを除去。I/O抽象化後はスキップテストを解消してレポート数値の整合を取る。
+### ✅ Quick Capture テスト負債解消（v0.4.12で完了）
+1. **✅ I/O抽象化**: `DailyNoteManager.appendToSection` の読み書きを `IFileWriter` に切り出し、`NoteParser.insertIntoSection` を再利用して純粋関数化。
+2. **✅ 改行・セクション挙動テスト**: CRLF→LF正規化、新規セクション生成、末尾/見出し前への挿入など主要シナリオのユニットテストを追加（10件全パス）。
+3. **将来対応**: タスク走査上限(200件)超え、並行書き込み競合時の挙動をシナリオテストで確認。
 
 ## ?? 開発成果
 
@@ -265,21 +266,22 @@
 - **再現可能な開発プロセス** - TDDサイクルの確立
 - **継続開発基盤** - 新機能追加が容易な設計
 
-## ?? スキップされたテスト (18個)
+## ⏸️ スキップされたテスト (14個)
 
 以下のテストは意図的にスキップされています：
 
 1. **ConfigurationManager** (5個) - 動的設定変更が必要（グローバルモック未サポート）
-2. **DailyNoteManager.appendToSection** (8個) - 実ファイルシステム操作が必要
-3. **DailyNoteManager TDD Red Phase** (1個) - 実装完了済みのため
-4. **PathUtil Windows Tests** (3個) - プラットフォーム依存（非Windows環境で自動スキップ）
-5. **File Creation Integration** (1個) - 実ファイルシステム操作が必要
+2. **DailyNoteManager TDD Red Phase** (5個) - 実装完了済みのため意図的にスキップ
+3. **PathUtil Windows Tests** (3個) - プラットフォーム依存（非Windows環境で自動スキップ）
+4. **File Creation Integration** (1個) - 実ファイルシステム操作が必要
 
 これらは機能には影響せず、テスト環境の制約によるスキップです。
 
+**v0.4.12での改善**: `DailyNoteManager.appendToSection` の8個のスキップテストは、`IFileWriter` DIにより解消され、全10件がパスするようになりました。
+
 ---
 
-**Status: ? EXCELLENT QUALITY - v0.4.11**  
-**Date: 2025-11-19**  
-**Quality: 254/254 active tests passing (100%)**  
+**Status: ✅ EXCELLENT QUALITY - v0.4.12**
+**Date: 2025-12-14**
+**Quality: 278/278 active tests passing (100%)**
 **Branch: develop**
