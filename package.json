@@ -2,7 +2,7 @@
   "name": "mdloggerforcode",
   "displayName": "MDlogger For Code",
   "description": "Obsidian-like WikiLink functionality for VS Code",
-  "version": "0.4.11",
+  "version": "0.4.13",
   "publisher": "mdloggerforCode",
   "engines": {
     "vscode": "^1.103.0"
