@@ -24,7 +24,7 @@ VS Code 上で Obsidian ライクなワークフローを補完するため、Ex
 - **新機能 (2025-12-14)**:
   - タスク表示範囲を dailyNote 配下のみに限定（`getDailyNoteDirectory` API 利用）
   - Ctrl+Enter (Cmd+Enter on Mac) でのクイックキャプチャ送信機能
-- 残課題: `DailyNoteManager.appendToSection` の単体テストは describe.skip のまま。CRLF→LF 正規化や multi-root 非対応の扱い、Webview のみへのエラー通知は今後の改善余地。
+- 残課題: multi-root 非対応の扱い、Webview のみへのエラー通知、200件上限の明示的なユーザ通知は今後の改善余地。`DailyNoteManager.appendToSection` の単体テストは IFileWriter DI 化により全件有効化済み。
 
 ## テスト
 - 実施: QuickCaptureSidebarProvider / TaskService / TaskCollector / NoteParser のユニットテスト追加。

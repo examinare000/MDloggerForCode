@@ -23,6 +23,8 @@
 | [015](./ADR-015-test-quality-improvements.md) | Test Quality Improvements | Accepted | 2025-10-01 | テスト成功率95.6%達成とグローバルモック統合 |
 | [016](./016-wikilink-interaction-refinement.md) | WikiLink Interaction Refinement | Accepted | 2025-10-04 | WikiLink境界判定・リンク解決・補完の操作性改善 |
 | [017](./017-wikilink-completion-directory-filtering.md) | WikiLink Completion Directory Filtering | Accepted | 2025-10-08 | WikiLink補完でディレクトリパス絞り込み機能を実装 |
+| [018](./018-quick-capture-sidebar.md) | Quick Capture Sidebar | Accepted | 2025-10-30 | DailyNote 連携のクイックキャプチャ Webview とタスク完了機能 |
+| [019](./019-dailynote-io-abstraction-and-scope.md) | DailyNote I/O 抽象化とスコープ制御 | Accepted | 2025-12-15 | IFileWriter DI と Vault ルート解決、DailyNote 配下限定タスク走査 |
 
 ## ADR作成ガイドライン
 
@@ -57,4 +59,3 @@ YYYY-MM-DD
 ## 参考リンク
 - [Architecture Decision Records の書き方](https://github.com/joelparkerhenderson/architecture-decision-record)
 - [TDD については t-wada のガイドライン](https://github.com/testdouble/contributing-tests/wiki/Test-Driven-Development)
-
