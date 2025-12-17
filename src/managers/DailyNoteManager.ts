@@ -66,35 +66,34 @@ function resolveVaultUri(options: VaultPathOptions): vscode.Uri {
         : [relativePath].filter(Boolean);
     const pathSuffix = pathSegments.join('/');
 
-    if (vaultRoot && vaultRoot.trim() !== '') {
-        if (isAbsoluteVaultRoot(vaultRoot)) {
-            const scheme = workspaceFolder.uri.scheme;
-            const fullPath = fileName
-                ? `${vaultRoot}/${relativePath}/${fileName}`
-                : `${vaultRoot}/${relativePath}`;
-
-            if (scheme === 'file') {
-                return vscode.Uri.file(fullPath);
-            } else {
-                // Remote environment: normalize path and preserve scheme
-                const normalizedVaultRoot = normalizeAbsolutePath(vaultRoot);
-                const normalizedPath = fileName
-                    ? `${normalizedVaultRoot}/${relativePath}/${fileName}`
-                    : `${normalizedVaultRoot}/${relativePath}`;
-                return workspaceFolder.uri.with({ path: normalizedPath });
-            }
-        } else {
-            // Relative vault root
-            return fileName
-                ? vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath, fileName)
-                : vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath);
-        }
-    } else {
+    if (!vaultRoot || vaultRoot.trim() === '') {
         // No vault root configured
         return fileName
             ? vscode.Uri.joinPath(workspaceFolder.uri, relativePath, fileName)
             : vscode.Uri.joinPath(workspaceFolder.uri, relativePath);
     }
+
+    if (!isAbsoluteVaultRoot(vaultRoot)) {
+        // Relative vault root
+        return fileName
+            ? vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath, fileName)
+            : vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, relativePath);
+    }
+
+    const scheme = workspaceFolder.uri.scheme;
+    if (scheme === 'file') {
+        const fullPath = fileName
+            ? `${vaultRoot}/${relativePath}/${fileName}`
+            : `${vaultRoot}/${relativePath}`;
+        return vscode.Uri.file(fullPath);
+    }
+
+    // Remote environment: normalize path and preserve scheme
+    const normalizedVaultRoot = normalizeAbsolutePath(vaultRoot);
+    const normalizedPath = fileName
+        ? `${normalizedVaultRoot}/${relativePath}/${fileName}`
+        : `${normalizedVaultRoot}/${relativePath}`;
+    return workspaceFolder.uri.with({ path: normalizedPath });
 }
 
 /**
