@@ -19,6 +19,7 @@ import { DailyNoteManager } from './managers/DailyNoteManager';
 import { PathUtil } from './utils/PathUtil';
 import { NoteFinder } from './utils/NoteFinder';
 import { QuickCaptureSidebarProvider } from './providers/QuickCaptureSidebarProvider';
+import { PreviewPanelProvider } from './providers/PreviewPanelProvider';
 
 /**
  * Activates the MDloggerForCode extension.
@@ -106,6 +107,10 @@ export function activate(context: vscode.ExtensionContext) {
         errors.push(`Failed to register ListContinuationProvider: ${error}`);
     }
 
+    // Preview panel provider (WikiLink-aware markdown preview)
+    const previewProvider = new PreviewPanelProvider(context, configManager);
+    context.subscriptions.push(previewProvider);
+
     // Commands登録（個別エラーハンドリング）
     const commands: vscode.Disposable[] = [];
 
@@ -142,7 +147,7 @@ export function activate(context: vscode.ExtensionContext) {
     // preview コマンド
     try {
         const previewCommand = vscode.commands.registerCommand('mdlg.preview', () => {
-            return showPreview();
+            return previewProvider.show();
         });
         commands.push(previewCommand);
     } catch (error) {
@@ -483,23 +488,6 @@ async function insertTime(configManager: ConfigurationManager, dateTimeFormatter
     const edit = new vscode.WorkspaceEdit();
     edit.insert(editor.document.uri, position, formattedTime);
     await vscode.workspace.applyEdit(edit);
-}
-
-/**
- * Shows a preview of the current Markdown document.
- * Currently displays a placeholder message. Future implementation will provide
- * enhanced preview functionality.
- *
- * @throws {Error} When preview cannot be displayed
- */
-async function showPreview(): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'markdown') {
-        vscode.window.showInformationMessage('Open a Markdown file to use preview');
-        return;
-    }
-    
-    vscode.window.showInformationMessage('Preview feature coming soon!');
 }
 
 /**

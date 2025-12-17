@@ -36,6 +36,8 @@ export class CommandHandler {
     insertText?: (uri: Uri, position: Position, text: string) => Promise<boolean>;
     /** Factory function to show a message to the user */
     showMessage?: (message: string) => void;
+    /** Factory function to show a preview panel for a document */
+    showPreviewPanel?: (document: TextDocument) => Promise<void>;
     /** Factory function to find a note by title across subdirectories */
     findNoteByTitle?: (title: string) => Promise<Uri | null>;
     
@@ -184,8 +186,12 @@ export class CommandHandler {
         if (!editor || editor.document.languageId !== 'markdown') {
             return false;
         }
-        
-        // 簡単なプレビュー実装 - 後で拡張予定
+
+        if (this.showPreviewPanel) {
+            await this.showPreviewPanel(editor.document);
+            return true;
+        }
+
         if (this.showMessage) {
             this.showMessage('Preview feature coming soon!');
         }
