@@ -101,6 +101,7 @@ const vscode = {
         showTextDocument: async () => ({}),
         showErrorMessage: () => {},
         showInformationMessage: () => {},
+        showQuickPick: async (items: any[]) => (Array.isArray(items) ? items[0] : undefined),
         onDidChangeTextEditorSelection: () => ({ dispose: () => {} }),
         onDidChangeActiveTextEditor: () => ({ dispose: () => {} })
     },

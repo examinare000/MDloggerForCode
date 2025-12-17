@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { DailyNoteManager } from '../managers/DailyNoteManager';
 import { TaskService } from '../services/TaskService';
@@ -40,7 +41,8 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
         type CaptureAddMessage = { command: 'capture:add'; content?: string };
         type RequestTasksMessage = { command: 'request:tasks' };
         type TaskCompleteMessage = { command: 'task:complete'; payload?: { text: string; items: { uri: string; line: number; file?: string }[] } };
-        type QuickCaptureMessage = CaptureAddMessage | RequestTasksMessage | TaskCompleteMessage;
+        type TaskOpenMessage = { command: 'task:open'; payload?: { text: string; items: { uri: string; line: number; file?: string }[] } };
+        type QuickCaptureMessage = CaptureAddMessage | RequestTasksMessage | TaskCompleteMessage | TaskOpenMessage;
 
         webviewView.webview.onDidReceiveMessage(async (msg: QuickCaptureMessage) => {
             try {
@@ -134,6 +136,60 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                         }
                         return;
                     }
+                    case 'task:open': {
+                        const payload = (msg as TaskOpenMessage).payload || { text: '', items: [] };
+                        const { text, items } = payload;
+                        if (!text || !Array.isArray(items) || items.length === 0) {
+                            webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
+                            return;
+                        }
+
+                        const picks = items.map((item) => {
+                            const line = Number(item.line);
+                            const fileLabel = item.file || path.basename(item.uri);
+                            const lineLabel = Number.isFinite(line) ? `:${line + 1}` : '';
+                            return {
+                                label: `${fileLabel}${lineLabel}`,
+                                description: item.uri,
+                                _task: { uri: item.uri, line }
+                            };
+                        }).filter(p => p._task.uri && Number.isFinite(p._task.line));
+
+                        if (picks.length === 0) {
+                            webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
+                            return;
+                        }
+
+                        let chosen = picks[0];
+                        if (picks.length > 1) {
+                            const picked = await vscode.window.showQuickPick(picks as any, {
+                                placeHolder: `Open task source for: ${text}`
+                            } as any);
+                            if (!picked) {
+                                return;
+                            }
+                            chosen = picked as any;
+                        }
+
+                        const targetUri = vscode.Uri.file(chosen._task.uri);
+                        const line = Math.max(0, chosen._task.line);
+                        const position = new vscode.Position(line, 0);
+                        const range = new vscode.Range(position, position);
+
+                        const editor = await vscode.window.showTextDocument(targetUri as any, {
+                            selection: range,
+                            preview: true
+                        } as any);
+
+                        if (editor && typeof (editor as any).revealRange === 'function') {
+                            try {
+                                (editor as any).revealRange(range);
+                            } catch {
+                                // ignore
+                            }
+                        }
+                        return;
+                    }
                 }
             } catch (e) {
                 webviewView.webview.postMessage({ command: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -157,9 +213,10 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     .tasks { margin-top:12px; }
     .task { display:flex; flex-direction:column; gap:4px; padding:6px 0; border-bottom:1px solid #ddd; }
     .task-row { display:flex; align-items:center; gap:8px; }
-    .task button { margin-left:auto; }
+    .task-actions { margin-left:auto; display:flex; gap:6px; }
     .badge { background:#eee; border-radius:12px; padding:2px 8px; font-size:12px; }
     .files { color:#666; font-size:12px; }
+    .task-link { cursor:pointer; text-decoration: underline; color: #0366d6; }
   </style>
 </head>
 <body>
@@ -218,21 +275,36 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
               row.className = 'task-row';
 
               const span = document.createElement('span');
+              span.className = 'task-link';
               span.textContent = g.text;
+              span.addEventListener('click', () => {
+                vscode.postMessage({ command: 'task:open', payload: { text: g.text, items: g.items } });
+              });
 
               const badge = document.createElement('span');
               badge.className = 'badge';
               badge.textContent = g.count + '×';
 
-              const btn = document.createElement('button');
-              btn.textContent = 'Complete';
-              btn.addEventListener('click', () => {
+              const openBtn = document.createElement('button');
+              openBtn.textContent = 'Open';
+              openBtn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'task:open', payload: { text: g.text, items: g.items } });
+              });
+
+              const completeBtn = document.createElement('button');
+              completeBtn.textContent = 'Complete';
+              completeBtn.addEventListener('click', () => {
                 vscode.postMessage({ command: 'task:complete', payload: { text: g.text, items: g.items } });
               });
 
+              const actions = document.createElement('div');
+              actions.className = 'task-actions';
+              actions.appendChild(openBtn);
+              actions.appendChild(completeBtn);
+
               row.appendChild(span);
               row.appendChild(badge);
-              row.appendChild(btn);
+              row.appendChild(actions);
               container.appendChild(row);
 
               const files = document.createElement('div');

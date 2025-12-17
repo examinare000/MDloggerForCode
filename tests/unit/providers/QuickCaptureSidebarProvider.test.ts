@@ -452,6 +452,75 @@ describe('QuickCaptureSidebarProvider', () => {
         });
     });
 
+    describe('task:open message handling', () => {
+        it('should open the task source file at the task line', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            let opened: { uri: any; line?: number } | undefined;
+            (vscode.window as any).showTextDocument = async (uri: any, options?: any) => {
+                opened = { uri, line: options?.selection?.start?.line };
+                return {};
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:open',
+                payload: {
+                    text: 'todo',
+                    items: [{ uri: '/test/workspace/note.md', line: 5, file: 'note.md' }]
+                }
+            });
+
+            expect(opened).to.exist;
+            expect(opened!.uri.fsPath).to.equal('/test/workspace/note.md');
+            expect(opened!.line).to.equal(5);
+        });
+
+        it('should prompt selection when multiple task locations exist', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            const picks: any[] = [];
+            (vscode.window as any).showQuickPick = async (items: any[]) => {
+                picks.push(...items);
+                return items[1]; // choose second
+            };
+
+            let openedUri: any | undefined;
+            (vscode.window as any).showTextDocument = async (uri: any) => {
+                openedUri = uri;
+                return {};
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:open',
+                payload: {
+                    text: 'todo',
+                    items: [
+                        { uri: '/test/workspace/a.md', line: 1, file: 'a.md' },
+                        { uri: '/test/workspace/b.md', line: 2, file: 'b.md' }
+                    ]
+                }
+            });
+
+            expect(picks.length).to.equal(2);
+            expect(openedUri).to.exist;
+            expect(openedUri.fsPath).to.equal('/test/workspace/b.md');
+        });
+    });
+
     describe('constructor dependency injection', () => {
         it('should accept all required dependencies', () => {
             expect(() => {
