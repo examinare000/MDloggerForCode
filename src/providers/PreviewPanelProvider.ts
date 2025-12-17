@@ -84,7 +84,7 @@ export class PreviewPanelProvider implements vscode.Disposable {
             }, null, this.disposables);
 
             this.panel.webview.onDidReceiveMessage(
-                (message: PreviewMessage) => this.onMessage(message),
+                (message: unknown) => this.onMessage(message),
                 null,
                 this.disposables
             );
@@ -180,12 +180,16 @@ export class PreviewPanelProvider implements vscode.Disposable {
 </html>`;
     }
 
-    private async onMessage(message: PreviewMessage): Promise<void> {
-        if (message?.command !== 'openWikiLink') {
+    private async onMessage(message: unknown): Promise<void> {
+        if (!message || typeof message !== 'object') {
+            return;
+        }
+        const command = (message as { command?: unknown }).command;
+        if (command !== 'openWikiLink') {
             return;
         }
 
-        const link = (message as any).link;
+        const link = (message as { link?: unknown }).link;
         if (typeof link !== 'string' || !link.trim()) {
             return;
         }
@@ -249,4 +253,3 @@ export class PreviewPanelProvider implements vscode.Disposable {
         }
     }
 }
-

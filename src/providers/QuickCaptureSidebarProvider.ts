@@ -144,50 +144,45 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                             return;
                         }
 
-                        const picks = items.map((item) => {
+                        interface TaskLocationPick extends vscode.QuickPickItem {
+                            task: { uri: string; line: number };
+                        }
+
+                        const picks: TaskLocationPick[] = items.map((item) => {
                             const line = Number(item.line);
                             const fileLabel = item.file || path.basename(item.uri);
                             const lineLabel = Number.isFinite(line) ? `:${line + 1}` : '';
                             return {
                                 label: `${fileLabel}${lineLabel}`,
                                 description: item.uri,
-                                _task: { uri: item.uri, line }
+                                task: { uri: item.uri, line }
                             };
-                        }).filter(p => p._task.uri && Number.isFinite(p._task.line));
+                        }).filter(p => p.task.uri && Number.isFinite(p.task.line));
 
                         if (picks.length === 0) {
                             webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
                             return;
                         }
 
-                        let chosen = picks[0];
-                        if (picks.length > 1) {
-                            const picked = await vscode.window.showQuickPick(picks as any, {
+                        const chosen = picks.length > 1
+                            ? await vscode.window.showQuickPick<TaskLocationPick>(picks, {
                                 placeHolder: `Open task source for: ${text}`
-                            } as any);
-                            if (!picked) {
-                                return;
-                            }
-                            chosen = picked as any;
+                            })
+                            : picks[0];
+                        if (!chosen) {
+                            return;
                         }
 
-                        const targetUri = vscode.Uri.file(chosen._task.uri);
-                        const line = Math.max(0, chosen._task.line);
+                        const targetUri = vscode.Uri.file(chosen.task.uri);
+                        const line = Math.max(0, chosen.task.line);
                         const position = new vscode.Position(line, 0);
                         const range = new vscode.Range(position, position);
 
-                        const editor = await vscode.window.showTextDocument(targetUri as any, {
+                        const editor = await vscode.window.showTextDocument(targetUri, {
                             selection: range,
                             preview: true
-                        } as any);
-
-                        if (editor && typeof (editor as any).revealRange === 'function') {
-                            try {
-                                (editor as any).revealRange(range);
-                            } catch {
-                                // ignore
-                            }
-                        }
+                        });
+                        editor.revealRange(range);
                         return;
                     }
                 }

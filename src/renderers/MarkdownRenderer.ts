@@ -7,10 +7,23 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const MarkdownIt = require('markdown-it');
 
+interface MarkdownItTokenLike {
+    content: string;
+    meta?: {
+        raw?: string;
+    };
+}
+
+interface MarkdownItInlineStateLike {
+    pos: number;
+    src: string;
+    push: (type: string, tag: string, nesting: number) => MarkdownItTokenLike;
+}
+
 type MarkdownItInstance = {
     render: (markdown: string) => string;
-    inline: { ruler: { before: (after: string, name: string, rule: any) => void } };
-    renderer: { rules: Record<string, any> };
+    inline: { ruler: { before: (after: string, name: string, rule: (state: MarkdownItInlineStateLike, silent: boolean) => boolean) => void } };
+    renderer: { rules: Record<string, (tokens: MarkdownItTokenLike[], idx: number) => string> };
     utils: { escapeHtml: (text: string) => string };
 };
 
@@ -41,7 +54,7 @@ function getWikiLinkLabel(raw: string): string {
 function wikiLinkPlugin(md: MarkdownItInstance): void {
     const ruleName = 'mdlg_wikilink';
 
-    md.inline.ruler.before('emphasis', ruleName, (state: any, silent: boolean) => {
+    md.inline.ruler.before('emphasis', ruleName, (state: MarkdownItInlineStateLike, silent: boolean) => {
         const start = state.pos as number;
         const src: string = state.src as string;
 
@@ -75,7 +88,7 @@ function wikiLinkPlugin(md: MarkdownItInstance): void {
         return true;
     });
 
-    md.renderer.rules[ruleName] = (tokens: any[], idx: number) => {
+    md.renderer.rules[ruleName] = (tokens: MarkdownItTokenLike[], idx: number) => {
         const raw: string = tokens[idx]?.meta?.raw ?? '';
         const label: string = tokens[idx]?.content ?? raw;
         const safeRaw = escapeHtmlAttribute(raw);
@@ -101,4 +114,3 @@ export class MarkdownRenderer {
         return this.md.render(markdown ?? '');
     }
 }
-
