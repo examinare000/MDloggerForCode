@@ -24,6 +24,9 @@
         "@typescript-eslint/semi": "warn",
         "curly": "warn",
         "eqeqeq": "warn",
+        "max-depth": ["warn", 3],
+        "no-else-return": "warn",
+        "no-lonely-if": "warn",
         "no-throw-literal": "warn",
         "semi": "off"
     },

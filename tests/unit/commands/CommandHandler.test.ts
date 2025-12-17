@@ -199,8 +199,15 @@ describe('CommandHandler', () => {
     
     describe('mdlg.preview コマンド', () => {
         it('現在のドキュメントのプレビューを開く', async () => {
+            let called = false;
+            commandHandler.showPreviewPanel = async (doc) => {
+                called = true;
+                expect(doc).to.equal(mockDocument);
+            };
+
             const result = await commandHandler.showPreview();
             expect(result).to.be.true;
+            expect(called).to.be.true;
         });
         
         it('Markdownファイル以外では動作しない', async () => {

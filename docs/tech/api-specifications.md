@@ -88,11 +88,9 @@ interface MarkdownRenderOptions {
 ```typescript
 interface PreviewMessage {
   /** メッセージタイプ */
-  command: 'openWikiLink' | 'jumpToLine' | 'reload';
+  command: 'openWikiLink';
   /** WikiLinkテキスト */
   link?: string;
-  /** ジャンプ先行番号 */
-  line?: number;
 }
 ```
 
@@ -262,38 +260,13 @@ interface ValidationWarning {
 ```typescript
 class MarkdownRenderer {
   /**
-   * Markdownテキストを HTML に変換
+   * MarkdownテキストをHTMLに変換する。
+   * WikiLink（`[[...]]`）はクリック可能なアンカーに変換される。
+   *
    * @param markdown 変換対象のMarkdownテキスト
-   * @param documentUri ベースとなるドキュメントURI
-   * @param options レンダリングオプション
    * @returns 変換されたHTML
    */
-  renderMarkdown(
-    markdown: string,
-    documentUri: vscode.Uri,
-    options?: MarkdownRenderOptions
-  ): Promise<string>;
-  
-  /**
-   * WikiLinkのみを処理してHTML化
-   * @param markdown Markdownテキスト
-   * @param documentUri ベースURI
-   * @returns WikiLinkがHTMLに変換されたテキスト
-   */
-  processWikiLinksOnly(markdown: string, documentUri: vscode.Uri): Promise<string>;
-  
-  /**
-   * レンダリング設定を更新
-   * @param config 新しい設定
-   */
-  updateConfiguration(config: MarkdownRenderOptions): void;
-  
-  /**
-   * カスタムプラグインを追加
-   * @param plugin markdown-itプラグイン
-   * @param options プラグインオプション
-   */
-  addPlugin(plugin: any, options?: any): void;
+  render(markdown: string): string;
 }
 ```
 
@@ -672,11 +645,12 @@ class WikiLinkEventEmitter {
 type QuickCaptureInMessage =
   | { command: 'capture:add'; content: string }
   | { command: 'request:tasks' }
-  | { command: 'task:complete'; payload: { uri: string; line: number } };
+  | { command: 'task:complete'; payload: { text: string; items: { uri: string; line: number; file?: string }[] } }
+  | { command: 'task:open'; payload: { text: string; items: { uri: string; line: number; file?: string }[] } };
 
 type QuickCaptureOutMessage =
   | { command: 'capture:ok'; uri: string; line: number; timestamp: string }
-  | { command: 'tasks:update'; tasks: { uri: string; file: string; line: number; text: string }[] }
+  | { command: 'tasks:update'; groups: { text: string; count: number; files: string[]; items: { uri: string; file: string; line: number }[] }[] }
   | { command: 'error'; message: string };
 ```
 
@@ -754,5 +728,19 @@ interface PerformanceMetrics {
 ---
 
 **文書バージョン**: 1.1  
-**最終更新**: 2025-11-19  
+**最終更新**: 2025-12-17  
 **承認者**: [承認者名]
+### 3.3 MarkdownRenderer
+
+> **注記**: 現行実装の `MarkdownRenderer` は「軽量プレビュー用途のHTML生成」に特化しており、`MarkdownRenderOptions` は将来拡張用の仕様として残しています。
+
+```typescript
+class MarkdownRenderer {
+  /**
+   * Markdown文字列をHTMLに変換する（WikiLinkをクリック可能なアンカーに変換）
+   * @param markdown Markdown文字列
+   * @returns HTML文字列
+   */
+  render(markdown: string): string;
+}
+```

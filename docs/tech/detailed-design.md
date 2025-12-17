@@ -1,9 +1,9 @@
 # MDloggerForCode 詳細設計書
 
-> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.12 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI）を反映。
+> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.13 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI/タスク走査上限警告）を反映。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.12 (2025-12-14 時点)
-> テスト品質: 278/292 tests passing (14 skipped)
+> 現在バージョン: v0.4.13 (2025-12-17 時点)
+> テスト品質: 302/302 tests passing (0 skipped)
 
 ## 1. アーキテクチャ概要
 
@@ -134,7 +134,7 @@ import { WikiLinkProvider } from './providers/WikiLinkProvider';
 import { WikiLinkCompletionProvider } from './providers/WikiLinkCompletionProvider';
 import { ListContinuationProvider } from './providers/ListContinuationProvider';
 import { QuickCaptureSidebarProvider } from './providers/QuickCaptureSidebarProvider';
-import { PreviewProvider } from './providers/PreviewProvider';
+import { PreviewPanelProvider } from './providers/PreviewPanelProvider';
 import { CommandHandler } from './handlers/CommandHandler';
 import { ContextManager } from './managers/ContextManager';
 
@@ -143,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
     const wikiLinkProvider = new WikiLinkProvider(configManager);
     const completionProvider = new WikiLinkCompletionProvider(configManager);
     const listProvider = new ListContinuationProvider(configManager);
-    const previewProvider = new PreviewProvider(context);
+    const previewProvider = new PreviewPanelProvider(context);
     const commandHandler = new CommandHandler(configManager);
     const contextManager = new ContextManager();
 
@@ -356,58 +356,22 @@ export class WikiLinkProcessor {
 
 ## 4. Markdownプレビューシステム設計
 
-### 4.1 PreviewProvider実装
+### 4.1 PreviewPanelProvider実装（WebviewPanel）
 
 ```typescript
-// src/providers/PreviewProvider.ts
+// src/providers/PreviewPanelProvider.ts
 import * as vscode from 'vscode';
 import { MarkdownRenderer } from '../renderers/MarkdownRenderer';
 
-export class PreviewProvider implements vscode.WebviewViewProvider {
-    private webviewView?: vscode.WebviewView;
+export class PreviewPanelProvider implements vscode.Disposable {
+    private panel?: vscode.WebviewPanel;
     private renderer = new MarkdownRenderer();
     
     constructor(private context: vscode.ExtensionContext) {}
     
-    resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
-        token: vscode.CancellationToken
-    ): void {
-        this.webviewView = webviewView;
-        
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this.context.extensionUri]
-        };
-        
-        // エディタ変更監視
-        vscode.window.onDidChangeActiveTextEditor(() => {
-            this.updatePreview();
-        });
-        
-        vscode.workspace.onDidChangeTextDocument(e => {
-            if (e.document === vscode.window.activeTextEditor?.document) {
-                this.updatePreview();
-            }
-        });
-        
-        this.updatePreview();
-    }
-    
-    private async updatePreview(): Promise<void> {
-        if (!this.webviewView) return;
-        
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'markdown') {
-            this.webviewView.webview.html = '<p>No markdown file active</p>';
-            return;
-        }
-        
-        const markdown = editor.document.getText();
-        const html = await this.renderer.renderMarkdown(markdown, editor.document.uri);
-        
-        this.webviewView.webview.html = this.getWebviewContent(html);
+    async show(): Promise<void> {
+        // WebviewPanel を作成し、アクティブな Markdown を描画する
+        // 実装は `src/providers/PreviewPanelProvider.ts` を参照
     }
     
     private getWebviewContent(html: string): string {
@@ -422,17 +386,8 @@ export class PreviewProvider implements vscode.WebviewViewProvider {
             line-height: 1.6;
             margin: 20px;
         }
-        .wiki-link {
-            color: #0366d6;
-            text-decoration: none;
-            cursor: pointer;
-        }
-        .wiki-link:hover {
-            text-decoration: underline;
-        }
-        .wiki-link-missing {
-            color: #d73a49;
-        }
+        .mdlg-wikilink { color: #0366d6; text-decoration: none; cursor: pointer; }
+        .mdlg-wikilink:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -442,14 +397,12 @@ export class PreviewProvider implements vscode.WebviewViewProvider {
         
         // WikiLinkクリック処理
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('wiki-link')) {
-                e.preventDefault();
-                const linkText = e.target.dataset.link;
-                vscode.postMessage({
-                    command: 'openWikiLink',
-                    link: linkText
-                });
-            }
+            const el = e.target instanceof Element ? e.target.closest('[data-mdlg-wikilink]') : null;
+            if (!el) return;
+            e.preventDefault();
+            const linkText = el.getAttribute('data-mdlg-wikilink');
+            if (!linkText) return;
+            vscode.postMessage({ command: 'openWikiLink', link: linkText });
         });
     </script>
 </body>
@@ -462,63 +415,10 @@ export class PreviewProvider implements vscode.WebviewViewProvider {
 
 ```typescript
 // src/renderers/MarkdownRenderer.ts
-import * as vscode from 'vscode';
-import MarkdownIt from 'markdown-it';
-import wikilinksPlugin from '@ig3/markdown-it-wikilinks';
-import { WikiLinkProcessor } from '../processors/WikiLinkProcessor';
-
 export class MarkdownRenderer {
-    private md: MarkdownIt;
-    private wikiLinkProcessor = new WikiLinkProcessor();
-    
-    constructor() {
-        this.md = new MarkdownIt({
-            html: false,
-            xhtmlOut: true,
-            breaks: true,
-            linkify: true
-        });
-        
-        // WikiLinksプラグイン設定
-        this.md.use(wikilinksPlugin, {
-            baseURL: '',
-            uriSuffix: '',
-            htmlAttributes: {
-                class: 'wiki-link'
-            },
-            generatePageNameFromLabel: (label: string) => label,
-            postProcessPageName: (pageName: string) => pageName
-        });
-    }
-    
-    async renderMarkdown(markdown: string, documentUri: vscode.Uri): Promise<string> {
-        // WikiLinksの前処理
-        const processedMarkdown = await this.preprocessWikiLinks(markdown, documentUri);
-        
-        // Markdown→HTML変換
-        return this.md.render(processedMarkdown);
-    }
-    
-    private async preprocessWikiLinks(markdown: string, documentUri: vscode.Uri): Promise<string> {
-        const wikiLinkPattern = /\[\[([^\]]+)\]\]/g;
-        let processedMarkdown = markdown;
-        
-        const matches = Array.from(markdown.matchAll(wikiLinkPattern));
-        
-        for (const match of matches) {
-            const linkText = match[1];
-            const parsed = this.wikiLinkProcessor.parseWikiLink(linkText);
-            const targetUri = await this.wikiLinkProcessor.resolveWikiLink(linkText, documentUri);
-            const exists = await this.wikiLinkProcessor.fileExists(targetUri);
-            
-            const displayText = parsed.displayName || parsed.pageName;
-            const className = exists ? 'wiki-link' : 'wiki-link wiki-link-missing';
-            
-            const replacement = `<a href="#" class="${className}" data-link="${linkText}">${displayText}</a>`;
-            processedMarkdown = processedMarkdown.replace(match[0], replacement);
-        }
-        
-        return processedMarkdown;
+    render(markdown: string): string {
+        // markdown-it で HTML 化し、[[WikiLink]] を
+        // `<a class="mdlg-wikilink" data-mdlg-wikilink="...">` に変換して返す。
     }
 }
 ```
@@ -779,22 +679,13 @@ export class ErrorHandler {
 ```
 tests/
 ├── unit/
-│   ├── processors/
-│   │   └── WikiLinkProcessor.test.ts
-│   ├── renderers/
-│   │   └── MarkdownRenderer.test.ts
-│   └── utils/
-│       └── DateTimeFormatter.test.ts
-├── integration/
+│   ├── commands/
+│   ├── managers/
 │   ├── providers/
-│   │   ├── WikiLinkProvider.test.ts
-│   │   └── PreviewProvider.test.ts
-│   └── managers/
-│       └── ConfigurationManager.test.ts
-└── e2e/
-    ├── wikilink-workflow.test.ts
-    ├── preview-workflow.test.ts
-    └── datetime-insertion.test.ts
+│   ├── renderers/
+│   └── utils/
+├── integration/
+│   └── *.test.ts
 ```
 
 ## 10. パフォーマンス考慮事項
@@ -2256,7 +2147,7 @@ export function activate(context: vscode.ExtensionContext) {
 - **柔軟性**: サブディレクトリ検索の有効/無効を選択可能
 
 #### 17.9.2 品質向上
-- **テストカバレッジ**: 292テストケース（エラーハンドリング、エッジケース含む）
+- **テストカバレッジ**: 296テストケース（エラーハンドリング、エッジケース含む）
 - **API一貫性**: 全検索メソッドが同じ型を返却
 - **保守性**: 統一されたモックヘルパーで将来的なテスト追加が容易
 
@@ -2272,14 +2163,14 @@ export function activate(context: vscode.ExtensionContext) {
 Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行メモの即時追記と DailyNote 配下の未完了タスク一覧/完了操作を提供する。DailyNote 機能が有効なときだけ登録する。
 
 ### 18.2 コンポーネントと責務
-- `QuickCaptureSidebarProvider`: WebviewViewProvider。`mdlg.quickCapture` を Explorer に登録し、`capture:add`・`request:tasks`・`task:complete` のメッセージを処理して DailyNote と TaskService を橋渡しする。`mdlg.openQuickCapture` は `workbench.view.explorer` → `mdlg.quickCapture.focus` を呼び出しビューにフォーカスする。
+- `QuickCaptureSidebarProvider`: WebviewViewProvider。`mdlg.quickCapture` を Explorer に登録し、`capture:add`・`request:tasks`・`task:complete`・`task:open` のメッセージを処理して DailyNote と TaskService を橋渡しする。`mdlg.openQuickCapture` は `workbench.view.explorer` → `mdlg.quickCapture.focus` を呼び出しビューにフォーカスする。
 - `DailyNoteManager`: 日次ノートの作成・管理を担当。`IFileWriter` を DI で受け取り、ファイル I/O を抽象化してテスト可能にしている。
   - `getDailyNotePath` / `getDailyNoteDirectory`: `resolveVaultUri` ヘルパーを使用してパス解決ロジックを共通化。絶対/相対パス、リモート環境に対応。
   - `appendToSection`: `NoteParser.insertIntoSection` を使用して純粋な文字列操作でセクション挿入。ファイル I/O は `IFileWriter` 経由。CRLF/LF を保持。
   - `ensureDailyNoteExists`: ファイル存在確認と作成を `IFileWriter.exists` / `IFileWriter.write` で実施。
 - `IFileWriter`: ファイル読み書きの抽象化インターフェース。`read`/`write`/`exists`/`createDirectory` メソッドを持ち、テスト時はインメモリ実装に差し替え可能。
 - `NoteParser.insertIntoSection`: セクション検出と行挿入の純粋関数。VS Code API 非依存でユニットテスト容易。
-- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。完了時は `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
+- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。抽出後は `text` をキーにグルーピングして件数とファイル一覧を付与する。完了時はグループ配下の全アイテムに対し `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
 
 ### 18.3 設定と前提
 - 登録条件: `mdlg.dailyNoteEnabled` が true の場合にのみ Quick Capture ビューと `mdlg.openQuickCapture` コマンドを登録。
@@ -2287,27 +2178,30 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 
 ### 18.4 UI 操作
 - 入力フィールド: 1行テキスト入力。**Ctrl+Enter (Cmd+Enter on Mac)** で送信、または「Add」ボタンクリックで送信。
-- タスク一覧: DailyNote配下の未完了タスクを表示。各タスクに「Complete」ボタン。
+- タスク一覧: DailyNote配下の未完了タスクを「文言でグルーピング」して表示。同一文言は 1 行にまとめ、件数バッジと代表ファイル名を表示。行の「Complete」操作はグループ配下の全タスクを一括完了する。
+- タスク導線: タスク文言クリック、または「Open」ボタンで元ファイルを開き、該当行へジャンプする（複数候補がある場合は選択）。
 
 ### 18.5 Webview メッセージプロトコル
 - Webview → Extension
   - `capture:add` { content: string }
   - `request:tasks`
-  - `task:complete` { payload: { uri: string; line: number } }
+  - `task:complete` { payload: { text: string; items: { uri: string; line: number; file?: string }[] } } （グループ行の全タスクを指定）
+  - `task:open` { payload: { text: string; items: { uri: string; line: number; file?: string }[] } } （元ファイルへジャンプ）
 - Extension → Webview
   - `capture:ok` { timestamp: ISO string, uri: string, line: number }
-  - `tasks:update` { tasks: { uri: string; file: string; line: number; text: string }[] }
+  - `tasks:update` { groups: { text: string; count: number; files: string[]; items: { uri: string; file: string; line: number }[] }[] }
   - `error` { message: string }
 
 ### 18.6 振る舞い詳細
 - `capture:add`: 空文字と workspace 未オープンを弾き、`appendToSection` を呼び出して挿入位置を返す。例外は `error` メッセージで通知。
-- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を `tasks:update` で返す。
-- `task:complete`: ペイロードを検証し、`completeTask(uri, line, today)` で完了タグを付与→直後に `request:tasks` と同じ経路で一覧を再送。
+- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を文言（`text`）単位でグルーピングして `tasks:update` で返す。件数超過検知のため 201 件まで取得し、超過した場合は先頭 200 件のみ処理して `showWarningMessage` で通知する。グループには `count`（件数）、`files`（出現ファイル名のユニーク集合）、`items`（`uri`/`file`/`line` の配列）を含める。
+- `task:complete`: ペイロードを検証し、グループ内の全 `items` を対象に `completeTask(uri, line, today)` を逐次適用→直後に `request:tasks` と同じ経路でグループ化された一覧を再送。
+- `task:open`: `items` が 1 件ならそのファイルを開き該当行へジャンプする。複数件なら `showQuickPick` で選択してから開く。
 
 ### 18.7 エラーハンドリングと制約
 - 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
 - 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
-- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
+- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。201 件以上検出時は VS Code 通知で警告し、先頭 200 件のみ処理する。
 
 ### 18.8 テスト状況
 - 実装済みユニットテスト:
@@ -2320,9 +2214,10 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
   - セクション検出・挿入位置・CRLF/LF 保持の振る舞いをユニットテストでカバー
   - インメモリ `IFileWriter` モックにより vscode.workspace.fs 非依存でテスト可能
   - 全テストモックが `IFileWriter` インターフェースに完全準拠
+  - タスク走査上限 (200 件) 超過時の警告と切り捨て処理をユニットテストで担保
 
 ---
 
-**Document version**: 2.1
-**Last updated**: 2025-12-14
-**Update note**: TaskService.test.ts の MockFileWriter を IFileWriter インターフェースに準拠させ、コンパイルエラーを解消
+**Document version**: 2.2
+**Last updated**: 2025-12-17
+**Update note**: Quick Capture のタスク走査上限警告・処理を追加し、テスト数とメタデータを更新

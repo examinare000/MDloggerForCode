@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { DailyNoteManager } from '../managers/DailyNoteManager';
 import { TaskService } from '../services/TaskService';
 import { VscodeFileWriter } from '../services/FileWriter';
+import type { TaskGroup } from '../utils/TaskCollector';
 
 export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewId = 'mdlg.quickCapture';
+    private static readonly MAX_DAILY_NOTE_FILES = 200;
     private view?: vscode.WebviewView;
     private taskServiceInstance?: TaskService;
 
@@ -39,8 +42,9 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
 
         type CaptureAddMessage = { command: 'capture:add'; content?: string };
         type RequestTasksMessage = { command: 'request:tasks' };
-        type TaskCompleteMessage = { command: 'task:complete'; payload?: { uri: string; line: number } };
-        type QuickCaptureMessage = CaptureAddMessage | RequestTasksMessage | TaskCompleteMessage;
+        type TaskCompleteMessage = { command: 'task:complete'; payload?: { text: string; items: { uri: string; line: number; file?: string }[] } };
+        type TaskOpenMessage = { command: 'task:open'; payload?: { text: string; items: { uri: string; line: number; file?: string }[] } };
+        type QuickCaptureMessage = CaptureAddMessage | RequestTasksMessage | TaskCompleteMessage | TaskOpenMessage;
 
         webviewView.webview.onDidReceiveMessage(async (msg: QuickCaptureMessage) => {
             try {
@@ -64,57 +68,149 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                     }
 
                     case 'request:tasks': {
-            // Collect open tasks from dailyNote directory only
-            try {
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-              if (!workspaceFolder) {
-                webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-                return;
-              }
-
-              // Restrict search to the configured daily note directory
-              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
-              const tasks = await this.taskService.collectTasksFromUris(files);
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks });
-            } catch (err) {
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-            }
+                        await this.refreshTasks(webviewView.webview);
                         return;
                     }
-          case 'task:complete': {
-            // payload: { uri: string, line: number }
-            const payload = (msg as TaskCompleteMessage).payload || { uri: '', line: NaN };
-            try {
-              const uriStr = payload.uri;
-              const line = Number(payload.line);
-              if (!uriStr || Number.isNaN(line)) {
-                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
-                return;
-              }
-              const uri = vscode.Uri.file(uriStr);
-              const today = new Date().toISOString().slice(0, 10);
-              await this.taskService.completeTask(uri, line, today);
-              // refresh tasks from dailyNote directory only
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-              if (!workspaceFolder) {
-                webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-                return;
-              }
-              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
-              const tasks = await this.taskService.collectTasksFromUris(files);
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks });
-            } catch (err) {
-              webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
-            }
-            return;
-          }
+                    case 'task:complete': {
+                        // payload: { text, items: [{ uri, line }] }
+                        const payload = (msg as TaskCompleteMessage).payload || { text: '', items: [] };
+                        try {
+                            const { text, items } = payload;
+                            if (!text || !Array.isArray(items) || items.length === 0) {
+                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+                                return;
+                            }
+                            const parsedItems = this.parseTaskCompletionItems(items);
+                            if (!parsedItems) {
+                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+                                return;
+                            }
+                            const today = new Date().toISOString().slice(0, 10);
+                            await this.taskService.completeTasks(parsedItems, today);
+                            await this.refreshTasks(webviewView.webview);
+                        } catch (err) {
+                            webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
+                        }
+                        return;
+                    }
+                    case 'task:open': {
+                        const payload = (msg as TaskOpenMessage).payload || { text: '', items: [] };
+                        const { text, items } = payload;
+                        if (!text || !Array.isArray(items) || items.length === 0) {
+                            webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
+                            return;
+                        }
+
+                        interface TaskLocationPick extends vscode.QuickPickItem {
+                            task: { uri: string; line: number };
+                        }
+
+                        const picks: TaskLocationPick[] = items.map((item) => {
+                            const line = Number(item.line);
+                            const fileLabel = item.file || path.basename(item.uri);
+                            const lineLabel = Number.isFinite(line) ? `:${line + 1}` : '';
+                            return {
+                                label: `${fileLabel}${lineLabel}`,
+                                description: item.uri,
+                                task: { uri: item.uri, line }
+                            };
+                        }).filter(p => p.task.uri && Number.isFinite(p.task.line));
+
+                        if (picks.length === 0) {
+                            webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
+                            return;
+                        }
+
+                        const chosen = picks.length > 1
+                            ? await vscode.window.showQuickPick<TaskLocationPick>(picks, {
+                                placeHolder: `Open task source for: ${text}`
+                            })
+                            : picks[0];
+                        if (!chosen) {
+                            return;
+                        }
+
+                        const targetUri = vscode.Uri.file(chosen.task.uri);
+                        const line = Math.max(0, chosen.task.line);
+                        const position = new vscode.Position(line, 0);
+                        const range = new vscode.Range(position, position);
+
+                        const editor = await vscode.window.showTextDocument(targetUri, {
+                            selection: range,
+                            preview: true
+                        });
+                        editor.revealRange(range);
+                        return;
+                    }
                 }
             } catch (e) {
                 webviewView.webview.postMessage({ command: 'error', message: e instanceof Error ? e.message : String(e) });
             }
         });
+    }
+
+    private async refreshTasks(webview: vscode.Webview): Promise<void> {
+        const workspaceFolder = this.getPrimaryWorkspaceFolder();
+        if (!workspaceFolder) {
+            await this.postTasksUpdate(webview, []);
+            return;
+        }
+
+        try {
+            const { groups, truncated } = await this.collectOpenTaskGroups(workspaceFolder);
+            if (truncated) {
+                vscode.window.showWarningMessage(
+                    `Quick Capture: Showing first ${QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES} daily note files; older tasks may be omitted.`
+                );
+            }
+            await this.postTasksUpdate(webview, groups);
+        } catch {
+            await this.postTasksUpdate(webview, []);
+        }
+    }
+
+    private getPrimaryWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+        return vscode.workspace.workspaceFolders?.[0];
+    }
+
+    private parseTaskCompletionItems(
+        items: { uri: string; line: number }[]
+    ): { uri: vscode.Uri; line: number }[] | null {
+        const parsed: { uri: vscode.Uri; line: number }[] = [];
+        for (const item of items) {
+            const uriString = item?.uri;
+            if (typeof uriString !== 'string' || uriString.trim() === '') {
+                return null;
+            }
+
+            const lineNumber = Number(item?.line);
+            if (!Number.isFinite(lineNumber)) {
+                return null;
+            }
+
+            parsed.push({ uri: vscode.Uri.file(uriString), line: lineNumber });
+        }
+        return parsed;
+    }
+
+    private async collectOpenTaskGroups(workspaceFolder: vscode.WorkspaceFolder): Promise<{ groups: TaskGroup[]; truncated: boolean }> {
+        const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+        const maxFiles = QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES;
+
+        const files = await vscode.workspace.findFiles(
+            new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
+            '**/node_modules/**',
+            maxFiles + 1
+        );
+
+        const truncated = files.length > maxFiles;
+        const candidates = truncated ? files.slice(0, maxFiles) : files;
+        const groups = await this.taskService.collectTasksFromUris(candidates);
+        return { groups, truncated };
+    }
+
+    private async postTasksUpdate(webview: vscode.Webview, groups: TaskGroup[]): Promise<void> {
+        await webview.postMessage({ command: 'tasks:update', groups });
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
@@ -131,8 +227,12 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     input[type="text"] { flex:1; padding:6px 8px; }
     button { padding:6px 8px; }
     .tasks { margin-top:12px; }
-    .task { display:flex; align-items:center; gap:8px; padding:4px 0; }
-    .task button { margin-left:auto; }
+    .task { display:flex; flex-direction:column; gap:4px; padding:6px 0; border-bottom:1px solid #ddd; }
+    .task-row { display:flex; align-items:center; gap:8px; }
+    .task-actions { margin-left:auto; display:flex; gap:6px; }
+    .badge { background:#eee; border-radius:12px; padding:2px 8px; font-size:12px; }
+    .files { color:#666; font-size:12px; }
+    .task-link { cursor:pointer; text-decoration: underline; color: #0366d6; }
   </style>
 </head>
 <body>
@@ -178,27 +278,57 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
           tasksList.innerText = 'Captured at ' + new Date(msg.timestamp).toLocaleTimeString();
           break;
         case 'tasks:update':
-          const tasks = msg.tasks || [];
-          if (tasks.length === 0) {
+          const groups = msg.groups || [];
+          if (groups.length === 0) {
             tasksList.innerText = '(no tasks)';
           } else {
-            // Build DOM nodes to avoid nested template/backtick issues
             tasksList.innerHTML = '';
-            tasks.forEach(t => {
-              const div = document.createElement('div');
-              div.className = 'task';
+            groups.forEach(g => {
+              const container = document.createElement('div');
+              container.className = 'task';
+
+              const row = document.createElement('div');
+              row.className = 'task-row';
+
               const span = document.createElement('span');
-              span.textContent = t.text;
-              const btn = document.createElement('button');
-              btn.textContent = 'Complete';
-              btn.dataset.uri = t.uri;
-              btn.dataset.line = String(t.line);
-              btn.addEventListener('click', () => {
-                vscode.postMessage({ command: 'task:complete', payload: { uri: t.uri, line: t.line } });
+              span.className = 'task-link';
+              span.textContent = g.text;
+              span.addEventListener('click', () => {
+                vscode.postMessage({ command: 'task:open', payload: { text: g.text, items: g.items } });
               });
-              div.appendChild(span);
-              div.appendChild(btn);
-              tasksList.appendChild(div);
+
+              const badge = document.createElement('span');
+              badge.className = 'badge';
+              badge.textContent = g.count + '×';
+
+              const openBtn = document.createElement('button');
+              openBtn.textContent = 'Open';
+              openBtn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'task:open', payload: { text: g.text, items: g.items } });
+              });
+
+              const completeBtn = document.createElement('button');
+              completeBtn.textContent = 'Complete';
+              completeBtn.addEventListener('click', () => {
+                vscode.postMessage({ command: 'task:complete', payload: { text: g.text, items: g.items } });
+              });
+
+              const actions = document.createElement('div');
+              actions.className = 'task-actions';
+              actions.appendChild(openBtn);
+              actions.appendChild(completeBtn);
+
+              row.appendChild(span);
+              row.appendChild(badge);
+              row.appendChild(actions);
+              container.appendChild(row);
+
+              const files = document.createElement('div');
+              files.className = 'files';
+              files.textContent = (g.files || []).join(', ');
+              container.appendChild(files);
+
+              tasksList.appendChild(container);
             });
           }
           break;

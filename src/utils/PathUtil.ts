@@ -131,18 +131,18 @@ export class PathUtil {
     ): vscode.Uri {
         const sanitizedFileName = this.sanitizeFileName(fileName) + extension;
 
-        if (vaultRoot && vaultRoot.trim() !== '') {
-            if (this.isAbsolutePath(vaultRoot)) {
-                // 絶対パス: path.resolve()でクロスプラットフォーム対応
-                const absolutePath = path.resolve(vaultRoot, sanitizedFileName);
-                return vscode.Uri.file(absolutePath);
-            } else {
-                // 相対パス: joinPathでワークスペースからの相対パス
-                return vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, sanitizedFileName);
-            }
-        } else {
+        if (!vaultRoot || vaultRoot.trim() === '') {
             // vaultRootが空の場合、ワークスペースルートに作成
             return vscode.Uri.joinPath(workspaceFolder.uri, sanitizedFileName);
         }
+
+        if (this.isAbsolutePath(vaultRoot)) {
+            // 絶対パス: path.resolve()でクロスプラットフォーム対応
+            const absolutePath = path.resolve(vaultRoot, sanitizedFileName);
+            return vscode.Uri.file(absolutePath);
+        }
+
+        // 相対パス: joinPathでワークスペースからの相対パス
+        return vscode.Uri.joinPath(workspaceFolder.uri, vaultRoot, sanitizedFileName);
     }
 }

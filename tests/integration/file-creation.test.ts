@@ -17,7 +17,6 @@ describe('File Creation Integration Tests', function() {
         }
         
         testWorkspaceUri = workspaceFolders[0].uri;
-        console.log(`Test workspace: ${testWorkspaceUri.fsPath}`);
 
         // ConfigurationManagerのセットアップ（グローバルモックを使用）
         const config = vscode.workspace.getConfiguration('mdlg');
@@ -29,8 +28,6 @@ describe('File Creation Integration Tests', function() {
         const sanitizedName = testFileName.replace(/[/\\:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim();
         
         const targetUri = vscode.Uri.joinPath(testWorkspaceUri, `${sanitizedName}.md`);
-        
-        console.log(`Testing file with spaces: ${targetUri.fsPath}`);
         
         // URIのfsPathがルートディレクトリでないことを確認
         expect(targetUri.fsPath).to.not.equal('/Simple Page.md');
@@ -50,7 +47,7 @@ describe('File Creation Integration Tests', function() {
             try {
                 await vscode.workspace.fs.delete(targetUri);
             } catch (error) {
-                console.log('Cleanup error:', error);
+                // クリーンアップ失敗は無視（テスト本体の検証には影響しない）
             }
         }
     });
