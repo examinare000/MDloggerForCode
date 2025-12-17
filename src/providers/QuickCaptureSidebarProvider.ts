@@ -4,9 +4,11 @@ import { ConfigurationManager } from '../managers/ConfigurationManager';
 import { DailyNoteManager } from '../managers/DailyNoteManager';
 import { TaskService } from '../services/TaskService';
 import { VscodeFileWriter } from '../services/FileWriter';
+import type { TaskGroup } from '../utils/TaskCollector';
 
 export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewId = 'mdlg.quickCapture';
+    private static readonly MAX_DAILY_NOTE_FILES = 200;
     private view?: vscode.WebviewView;
     private taskServiceInstance?: TaskService;
 
@@ -66,31 +68,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                     }
 
                     case 'request:tasks': {
-                        // Collect open tasks from dailyNote directory only
-                        try {
-                            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-                            if (!workspaceFolder) {
-                                webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
-                                return;
-                            }
-
-                            // Restrict search to the configured daily note directory
-                            const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-                            const maxFiles = 200;
-                            const files = await vscode.workspace.findFiles(
-                                new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
-                                '**/node_modules/**',
-                                maxFiles + 1 // fetch one extra to detect truncation
-                            );
-                            const truncated = files.length > maxFiles;
-                            const groups = await this.taskService.collectTasksFromUris(truncated ? files.slice(0, maxFiles) : files);
-                            if (truncated) {
-                                vscode.window.showWarningMessage('Quick Capture: Showing first 200 daily note files; older tasks may be omitted.');
-                            }
-                            webviewView.webview.postMessage({ command: 'tasks:update', groups });
-                        } catch (err) {
-                            webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
-                        }
+                        await this.refreshTasks(webviewView.webview);
                         return;
                     }
                     case 'task:complete': {
@@ -112,25 +90,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                             }
                             const today = new Date().toISOString().slice(0, 10);
                             await this.taskService.completeTasks(parsedItems, today);
-                            // refresh tasks from dailyNote directory only
-                            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-                            if (!workspaceFolder) {
-                                webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
-                                return;
-                            }
-                            const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-                            const maxFiles = 200;
-                            const files = await vscode.workspace.findFiles(
-                                new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
-                                '**/node_modules/**',
-                                maxFiles + 1 // fetch one extra to detect truncation
-                            );
-                            const truncated = files.length > maxFiles;
-                            const groups = await this.taskService.collectTasksFromUris(truncated ? files.slice(0, maxFiles) : files);
-                            if (truncated) {
-                                vscode.window.showWarningMessage('Quick Capture: Showing first 200 daily note files; older tasks may be omitted.');
-                            }
-                            webviewView.webview.postMessage({ command: 'tasks:update', groups });
+                            await this.refreshTasks(webviewView.webview);
                         } catch (err) {
                             webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
                         }
@@ -190,6 +150,50 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                 webviewView.webview.postMessage({ command: 'error', message: e instanceof Error ? e.message : String(e) });
             }
         });
+    }
+
+    private async refreshTasks(webview: vscode.Webview): Promise<void> {
+        const workspaceFolder = this.getPrimaryWorkspaceFolder();
+        if (!workspaceFolder) {
+            await this.postTasksUpdate(webview, []);
+            return;
+        }
+
+        try {
+            const { groups, truncated } = await this.collectOpenTaskGroups(workspaceFolder);
+            if (truncated) {
+                vscode.window.showWarningMessage(
+                    `Quick Capture: Showing first ${QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES} daily note files; older tasks may be omitted.`
+                );
+            }
+            await this.postTasksUpdate(webview, groups);
+        } catch {
+            await this.postTasksUpdate(webview, []);
+        }
+    }
+
+    private getPrimaryWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+        return vscode.workspace.workspaceFolders?.[0];
+    }
+
+    private async collectOpenTaskGroups(workspaceFolder: vscode.WorkspaceFolder): Promise<{ groups: TaskGroup[]; truncated: boolean }> {
+        const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+        const maxFiles = QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES;
+
+        const files = await vscode.workspace.findFiles(
+            new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
+            '**/node_modules/**',
+            maxFiles + 1
+        );
+
+        const truncated = files.length > maxFiles;
+        const candidates = truncated ? files.slice(0, maxFiles) : files;
+        const groups = await this.taskService.collectTasksFromUris(candidates);
+        return { groups, truncated };
+    }
+
+    private async postTasksUpdate(webview: vscode.Webview, groups: TaskGroup[]): Promise<void> {
+        await webview.postMessage({ command: 'tasks:update', groups });
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
