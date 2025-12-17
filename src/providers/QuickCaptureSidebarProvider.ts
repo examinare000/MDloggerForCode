@@ -39,7 +39,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
 
         type CaptureAddMessage = { command: 'capture:add'; content?: string };
         type RequestTasksMessage = { command: 'request:tasks' };
-        type TaskCompleteMessage = { command: 'task:complete'; payload?: { uri: string; line: number } };
+        type TaskCompleteMessage = { command: 'task:complete'; payload?: { text: string; items: { uri: string; line: number; file?: string }[] } };
         type QuickCaptureMessage = CaptureAddMessage | RequestTasksMessage | TaskCompleteMessage;
 
         webviewView.webview.onDidReceiveMessage(async (msg: QuickCaptureMessage) => {
@@ -64,52 +64,76 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                     }
 
                     case 'request:tasks': {
-            // Collect open tasks from dailyNote directory only
-            try {
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-              if (!workspaceFolder) {
-                webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-                return;
-              }
+                        // Collect open tasks from dailyNote directory only
+                        try {
+                            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                            if (!workspaceFolder) {
+                                webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
+                                return;
+                            }
 
-              // Restrict search to the configured daily note directory
-              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
-              const tasks = await this.taskService.collectTasksFromUris(files);
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks });
-            } catch (err) {
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-            }
+                            // Restrict search to the configured daily note directory
+                            const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+                            const maxFiles = 200;
+                            const files = await vscode.workspace.findFiles(
+                                new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
+                                '**/node_modules/**',
+                                maxFiles + 1 // fetch one extra to detect truncation
+                            );
+                            const truncated = files.length > maxFiles;
+                            const groups = await this.taskService.collectTasksFromUris(truncated ? files.slice(0, maxFiles) : files);
+                            if (truncated) {
+                                vscode.window.showWarningMessage('Quick Capture: Showing first 200 daily note files; older tasks may be omitted.');
+                            }
+                            webviewView.webview.postMessage({ command: 'tasks:update', groups });
+                        } catch (err) {
+                            webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
+                        }
                         return;
                     }
-          case 'task:complete': {
-            // payload: { uri: string, line: number }
-            const payload = (msg as TaskCompleteMessage).payload || { uri: '', line: NaN };
-            try {
-              const uriStr = payload.uri;
-              const line = Number(payload.line);
-              if (!uriStr || Number.isNaN(line)) {
-                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
-                return;
-              }
-              const uri = vscode.Uri.file(uriStr);
-              const today = new Date().toISOString().slice(0, 10);
-              await this.taskService.completeTask(uri, line, today);
-              // refresh tasks from dailyNote directory only
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-              if (!workspaceFolder) {
-                webviewView.webview.postMessage({ command: 'tasks:update', tasks: [] });
-                return;
-              }
-              const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-              const files = await vscode.workspace.findFiles(new vscode.RelativePattern(dailyNoteDir, '**/*.md'), '**/node_modules/**', 200);
-              const tasks = await this.taskService.collectTasksFromUris(files);
-              webviewView.webview.postMessage({ command: 'tasks:update', tasks });
-            } catch (err) {
-              webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
-            }
-            return;
-          }
+                    case 'task:complete': {
+                        // payload: { text, items: [{ uri, line }] }
+                        const payload = (msg as TaskCompleteMessage).payload || { text: '', items: [] };
+                        try {
+                            const { text, items } = payload;
+                            if (!text || !Array.isArray(items) || items.length === 0) {
+                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+                                return;
+                            }
+                            const parsedItems = items.map(i => ({
+                                uri: vscode.Uri.file(i.uri),
+                                line: Number(i.line)
+                            }));
+                            if (parsedItems.some(i => !i.uri || Number.isNaN(i.line))) {
+                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+                                return;
+                            }
+                            const today = new Date().toISOString().slice(0, 10);
+                            await this.taskService.completeTasks(parsedItems, today);
+                            // refresh tasks from dailyNote directory only
+                            const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+                            if (!workspaceFolder) {
+                                webviewView.webview.postMessage({ command: 'tasks:update', groups: [] });
+                                return;
+                            }
+                            const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
+                            const maxFiles = 200;
+                            const files = await vscode.workspace.findFiles(
+                                new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
+                                '**/node_modules/**',
+                                maxFiles + 1 // fetch one extra to detect truncation
+                            );
+                            const truncated = files.length > maxFiles;
+                            const groups = await this.taskService.collectTasksFromUris(truncated ? files.slice(0, maxFiles) : files);
+                            if (truncated) {
+                                vscode.window.showWarningMessage('Quick Capture: Showing first 200 daily note files; older tasks may be omitted.');
+                            }
+                            webviewView.webview.postMessage({ command: 'tasks:update', groups });
+                        } catch (err) {
+                            webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
+                        }
+                        return;
+                    }
                 }
             } catch (e) {
                 webviewView.webview.postMessage({ command: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -131,8 +155,11 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     input[type="text"] { flex:1; padding:6px 8px; }
     button { padding:6px 8px; }
     .tasks { margin-top:12px; }
-    .task { display:flex; align-items:center; gap:8px; padding:4px 0; }
+    .task { display:flex; flex-direction:column; gap:4px; padding:6px 0; border-bottom:1px solid #ddd; }
+    .task-row { display:flex; align-items:center; gap:8px; }
     .task button { margin-left:auto; }
+    .badge { background:#eee; border-radius:12px; padding:2px 8px; font-size:12px; }
+    .files { color:#666; font-size:12px; }
   </style>
 </head>
 <body>
@@ -178,27 +205,42 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
           tasksList.innerText = 'Captured at ' + new Date(msg.timestamp).toLocaleTimeString();
           break;
         case 'tasks:update':
-          const tasks = msg.tasks || [];
-          if (tasks.length === 0) {
+          const groups = msg.groups || [];
+          if (groups.length === 0) {
             tasksList.innerText = '(no tasks)';
           } else {
-            // Build DOM nodes to avoid nested template/backtick issues
             tasksList.innerHTML = '';
-            tasks.forEach(t => {
-              const div = document.createElement('div');
-              div.className = 'task';
+            groups.forEach(g => {
+              const container = document.createElement('div');
+              container.className = 'task';
+
+              const row = document.createElement('div');
+              row.className = 'task-row';
+
               const span = document.createElement('span');
-              span.textContent = t.text;
+              span.textContent = g.text;
+
+              const badge = document.createElement('span');
+              badge.className = 'badge';
+              badge.textContent = g.count + '×';
+
               const btn = document.createElement('button');
               btn.textContent = 'Complete';
-              btn.dataset.uri = t.uri;
-              btn.dataset.line = String(t.line);
               btn.addEventListener('click', () => {
-                vscode.postMessage({ command: 'task:complete', payload: { uri: t.uri, line: t.line } });
+                vscode.postMessage({ command: 'task:complete', payload: { text: g.text, items: g.items } });
               });
-              div.appendChild(span);
-              div.appendChild(btn);
-              tasksList.appendChild(div);
+
+              row.appendChild(span);
+              row.appendChild(badge);
+              row.appendChild(btn);
+              container.appendChild(row);
+
+              const files = document.createElement('div');
+              files.className = 'files';
+              files.textContent = (g.files || []).join(', ');
+              container.appendChild(files);
+
+              tasksList.appendChild(container);
             });
           }
           break;

@@ -1,9 +1,9 @@
 # MDloggerForCode 詳細設計書
 
-> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.12 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI）を反映。
+> **更新情報**: 初期設計 (v0.1.0) をベースに、現行 v0.4.13 の機能（DailyNote/Quick Capture/リスト継続/サブディレクトリ検索/新設定/IFileWriter DI/タスク走査上限警告）を反映。
 > 最新の実装状況は `development-status.md` を参照してください。
-> 現在バージョン: v0.4.12 (2025-12-14 時点)
-> テスト品質: 278/292 tests passing (14 skipped)
+> 現在バージョン: v0.4.13 (2025-12-17 時点)
+> テスト品質: 296/296 tests passing (0 skipped)
 
 ## 1. アーキテクチャ概要
 
@@ -2256,7 +2256,7 @@ export function activate(context: vscode.ExtensionContext) {
 - **柔軟性**: サブディレクトリ検索の有効/無効を選択可能
 
 #### 17.9.2 品質向上
-- **テストカバレッジ**: 292テストケース（エラーハンドリング、エッジケース含む）
+- **テストカバレッジ**: 296テストケース（エラーハンドリング、エッジケース含む）
 - **API一貫性**: 全検索メソッドが同じ型を返却
 - **保守性**: 統一されたモックヘルパーで将来的なテスト追加が容易
 
@@ -2279,7 +2279,7 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
   - `ensureDailyNoteExists`: ファイル存在確認と作成を `IFileWriter.exists` / `IFileWriter.write` で実施。
 - `IFileWriter`: ファイル読み書きの抽象化インターフェース。`read`/`write`/`exists`/`createDirectory` メソッドを持ち、テスト時はインメモリ実装に差し替え可能。
 - `NoteParser.insertIntoSection`: セクション検出と行挿入の純粋関数。VS Code API 非依存でユニットテスト容易。
-- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。完了時は `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
+- `TaskService` / `TaskCollector` / `NoteParser`: `RelativePattern(dailyNoteDir, '**/*.md')` で最大 200 件を読み込み、`^(\s*[-*+]\s+)\[\s*\]\s+(.*)$` で未完了タスクを抽出。抽出後は `text` をキーにグルーピングして件数とファイル一覧を付与する。完了時はグループ配下の全アイテムに対し `markTaskCompleted` で `- [x] ... [completion: YYYY-MM-DD]` に書き換えたうえで保存する。`IFileWriter` を DI してユニットテスト可能にしている。
 
 ### 18.3 設定と前提
 - 登録条件: `mdlg.dailyNoteEnabled` が true の場合にのみ Quick Capture ビューと `mdlg.openQuickCapture` コマンドを登録。
@@ -2287,27 +2287,27 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
 
 ### 18.4 UI 操作
 - 入力フィールド: 1行テキスト入力。**Ctrl+Enter (Cmd+Enter on Mac)** で送信、または「Add」ボタンクリックで送信。
-- タスク一覧: DailyNote配下の未完了タスクを表示。各タスクに「Complete」ボタン。
+- タスク一覧: DailyNote配下の未完了タスクを「文言でグルーピング」して表示。同一文言は 1 行にまとめ、件数バッジと代表ファイル名を表示。行の「Complete」操作はグループ配下の全タスクを一括完了する。
 
 ### 18.5 Webview メッセージプロトコル
 - Webview → Extension
   - `capture:add` { content: string }
   - `request:tasks`
-  - `task:complete` { payload: { uri: string; line: number } }
+  - `task:complete` { payload: { text: string; items: { uri: string; line: number; file?: string }[] } } （グループ行の全タスクを指定）
 - Extension → Webview
   - `capture:ok` { timestamp: ISO string, uri: string, line: number }
-  - `tasks:update` { tasks: { uri: string; file: string; line: number; text: string }[] }
+  - `tasks:update` { groups: { text: string; count: number; files: string[]; items: { uri: string; file: string; line: number }[] }[] }
   - `error` { message: string }
 
 ### 18.6 振る舞い詳細
 - `capture:add`: 空文字と workspace 未オープンを弾き、`appendToSection` を呼び出して挿入位置を返す。例外は `error` メッセージで通知。
-- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を `tasks:update` で返す。
-- `task:complete`: ペイロードを検証し、`completeTask(uri, line, today)` で完了タグを付与→直後に `request:tasks` と同じ経路で一覧を再送。
+- `request:tasks`: workspace 未オープン時は空配列を返す。DailyNote ディレクトリ配下 (`mdlg.dailyNotePath`) の `.md` を最大 200 件走査し、抽出結果を文言（`text`）単位でグルーピングして `tasks:update` で返す。件数超過検知のため 201 件まで取得し、超過した場合は先頭 200 件のみ処理して `showWarningMessage` で通知する。グループには `count`（件数）、`files`（出現ファイル名のユニーク集合）、`items`（`uri`/`file`/`line` の配列）を含める。
+- `task:complete`: ペイロードを検証し、グループ内の全 `items` を対象に `completeTask(uri, line, today)` を逐次適用→直後に `request:tasks` と同じ経路でグループ化された一覧を再送。
 
 ### 18.7 エラーハンドリングと制約
 - 失敗時の多くは Webview への `error` メッセージでのみ通知され、VS Code の通知は Quick Capture 起動失敗時など限定的。
 - 1 つ目の workspace フォルダーのみに対応（multi-root 非対応）。
-- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。
+- タスク走査は 200 件に上限があり、大規模 Vault では未検出のタスクが残る可能性がある。201 件以上検出時は VS Code 通知で警告し、先頭 200 件のみ処理する。
 
 ### 18.8 テスト状況
 - 実装済みユニットテスト:
@@ -2320,9 +2320,10 @@ Explorer に Webview ベースの `Quick Capture` ビューを提供し、1 行�
   - セクション検出・挿入位置・CRLF/LF 保持の振る舞いをユニットテストでカバー
   - インメモリ `IFileWriter` モックにより vscode.workspace.fs 非依存でテスト可能
   - 全テストモックが `IFileWriter` インターフェースに完全準拠
+  - タスク走査上限 (200 件) 超過時の警告と切り捨て処理をユニットテストで担保
 
 ---
 
-**Document version**: 2.1
-**Last updated**: 2025-12-14
-**Update note**: TaskService.test.ts の MockFileWriter を IFileWriter インターフェースに準拠させ、コンパイルエラーを解消
+**Document version**: 2.2
+**Last updated**: 2025-12-17
+**Update note**: Quick Capture のタスク走査上限警告・処理を追加し、テスト数とメタデータを更新

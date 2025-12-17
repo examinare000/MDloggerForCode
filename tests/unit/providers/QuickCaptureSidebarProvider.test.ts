@@ -12,9 +12,11 @@ describe('QuickCaptureSidebarProvider', () => {
     let mockDailyNoteManager: DailyNoteManager;
     let mockWebviewView: vscode.WebviewView;
     let receivedMessages: any[];
+    let warnings: string[];
 
     beforeEach(() => {
         receivedMessages = [];
+        warnings = [];
 
         // ExtensionContextのモック
         mockContext = {
@@ -58,6 +60,11 @@ describe('QuickCaptureSidebarProvider', () => {
                 }
             }
         } as any;
+
+        (vscode.window as any).showWarningMessage = (msg: string) => {
+            warnings.push(msg);
+            return Promise.resolve(undefined);
+        };
 
         provider = new QuickCaptureSidebarProvider(
             mockContext,
@@ -229,7 +236,7 @@ describe('QuickCaptureSidebarProvider', () => {
     });
 
     describe('request:tasks message handling', () => {
-        it('should collect and return tasks from workspace', async () => {
+        it('should collect and return grouped tasks from workspace (spec)', async () => {
             const mockWorkspaceFolder = {
                 uri: vscode.Uri.file('/test/workspace'),
                 name: 'test',
@@ -245,6 +252,13 @@ describe('QuickCaptureSidebarProvider', () => {
                 ];
             };
 
+            // TaskServiceのモック（グループ形式で返す）
+            (provider as any).taskServiceInstance = {
+                collectTasksFromUris: async () => [
+                    { text: 'duplicate', count: 2, files: ['note1.md'], items: [{ uri: '/test/workspace/note1.md', file: 'note1.md', line: 1 }, { uri: '/test/workspace/note1.md', file: 'note1.md', line: 3 }] }
+                ]
+            };
+
             provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
 
             const messageCallback = (mockWebviewView.webview as any)._messageCallback;
@@ -254,7 +268,10 @@ describe('QuickCaptureSidebarProvider', () => {
 
             const tasksMessage = receivedMessages.find(m => m.command === 'tasks:update');
             expect(tasksMessage).to.exist;
-            expect(tasksMessage.tasks).to.be.an('array');
+            expect(tasksMessage.groups, 'tasks:update should provide grouped tasks').to.be.an('array');
+            // spec expectation: dedupe identical text and expose count/files/items
+            const sample = tasksMessage.groups[0] || {};
+            expect(sample).to.have.keys(['text', 'count', 'files', 'items']);
         });
 
         it('should send empty tasks array when no workspace is open', async () => {
@@ -269,12 +286,85 @@ describe('QuickCaptureSidebarProvider', () => {
 
             const tasksMessage = receivedMessages.find(m => m.command === 'tasks:update');
             expect(tasksMessage).to.exist;
-            expect(tasksMessage.tasks).to.deep.equal([]);
+            expect(tasksMessage.groups).to.deep.equal([]);
+        });
+
+        it('uses daily note directory as search root', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            const dailyDir = vscode.Uri.file('/test/workspace/dailynotes');
+            mockDailyNoteManager.getDailyNoteDirectory = () => dailyDir;
+
+            let receivedPattern: any;
+            (vscode.workspace as any).findFiles = async (pattern: any) => {
+                receivedPattern = pattern;
+                return [];
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({ command: 'request:tasks' });
+
+            expect(receivedPattern).to.exist;
+            expect(receivedPattern.base.fsPath || receivedPattern.base).to.equal(dailyDir.fsPath);
+            expect(receivedPattern.pattern).to.equal('**/*.md');
+        });
+
+        it('returns empty groups when task search fails', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+            (vscode.workspace as any).findFiles = async () => {
+                throw new Error('FS failure');
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({ command: 'request:tasks' });
+
+            const tasksMessage = receivedMessages.find(m => m.command === 'tasks:update');
+            expect(tasksMessage).to.exist;
+            expect(tasksMessage.groups).to.deep.equal([]);
+        });
+
+        it('warns when task scan exceeds limit and processes first 200 files only', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            const uris = Array.from({ length: 205 }, (_, i) => vscode.Uri.file(`/test/workspace/dailynotes/note-${i}.md`));
+            (vscode.workspace as any).findFiles = async () => uris;
+
+            let processedCount = -1;
+            (provider as any).taskServiceInstance = {
+                collectTasksFromUris: async (files: vscode.Uri[]) => {
+                    processedCount = files.length;
+                    return [];
+                }
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({ command: 'request:tasks' });
+
+            expect(processedCount).to.equal(200);
+            expect(warnings.some(w => w.includes('200'))).to.be.true;
         });
     });
 
     describe('task:complete message handling', () => {
-        it('should complete task and refresh task list', async () => {
+        it('should complete grouped tasks and refresh task list (spec)', async () => {
             const mockWorkspaceFolder = {
                 uri: vscode.Uri.file('/test/workspace'),
                 name: 'test',
@@ -283,14 +373,22 @@ describe('QuickCaptureSidebarProvider', () => {
             (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
             (vscode.workspace as any).findFiles = async () => [];
 
+            (provider as any).taskServiceInstance = {
+                completeTasks: async () => '',
+                collectTasksFromUris: async () => []
+            };
+
             provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
 
             const messageCallback = (mockWebviewView.webview as any)._messageCallback;
             await messageCallback({
                 command: 'task:complete',
                 payload: {
-                    uri: '/test/workspace/note.md',
-                    line: 5
+                    text: 'duplicate',
+                    items: [
+                        { uri: '/test/workspace/note.md', line: 5 },
+                        { uri: '/test/workspace/note.md', line: 6 }
+                    ]
                 }
             });
 
@@ -313,14 +411,44 @@ describe('QuickCaptureSidebarProvider', () => {
             await messageCallback({
                 command: 'task:complete',
                 payload: {
-                    uri: '',
-                    line: NaN
+                    text: '',
+                    items: []
                 }
             });
 
             const errorMessage = receivedMessages.find(m => m.command === 'error');
             expect(errorMessage).to.exist;
             expect(errorMessage.message).to.include('Invalid task complete payload');
+        });
+
+        it('should send error when TaskService fails to complete tasks', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+            (vscode.workspace as any).findFiles = async () => [];
+
+            (provider as any).taskServiceInstance = {
+                completeTasks: async () => {
+                    throw new Error('completion failed');
+                }
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:complete',
+                payload: {
+                    text: 'any',
+                    items: [{ uri: '/test/workspace/note.md', line: 2 }]
+                }
+            });
+
+            const errorMessage = receivedMessages.find(m => m.command === 'error');
+            expect(errorMessage).to.exist;
+            expect(errorMessage.message).to.include('completion failed');
         });
     });
 

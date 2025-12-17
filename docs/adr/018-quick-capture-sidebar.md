@@ -1,7 +1,7 @@
 # ADR 018: Quick Capture Sidebar の追加
 
 作成日: 2025-10-30
-更新日: 2025-12-14
+更新日: 2025-12-17
 
 ステータス: Accepted
 
@@ -13,18 +13,25 @@ VS Code 上で Obsidian ライクなワークフローを補完するため、Ex
 - 設定は `mdlg` セクションに集約し、以下を利用する: `mdlg.vaultRoot` / `mdlg.dailyNotePath` / `mdlg.dailyNoteFormat` / `mdlg.dailyNoteTemplate` / `mdlg.captureSectionName` / `mdlg.noteExtension` / `mdlg.timeFormat`。`mdlg.dailyNoteEnabled` が false の場合は Quick Capture を登録しない。
 - キャプチャは `DailyNoteManager.appendToSection` で `- [ ] {time} — {content}` を指定セクションに追記する。該当セクションが無い場合は `## {captureSectionName}` を新設する。
 - タスク抽出と完了は `TaskService`(IFileWriter 経由) + `TaskCollector`/`NoteParser` で実施し、完了時は `- [x] ... [completion: YYYY-MM-DD]` タグを付与する。
+- Quick Capture のタスクリストは文言でグルーピングし、UI では重複文言を 1 行にまとめて表示する。完了操作はそのグループ配下の全タスクに一括適用する。
 
 ## 根拠
 - Webview を選択し、テキスト入力とタスク一覧/完了ボタンを単一ビューにまとめることで最小 UI 変更で実装できる。
 - DailyNote と設定管理を既存の `DailyNoteManager` / `ConfigurationManager` に集約し、WikiLink 系のロジックから分離することで影響範囲を限定する。
+- DailyNote 配下ではテンプレート挿入やコピーで同一文言のタスクが増えやすく、グルーピングが一覧性と操作性を向上させる。
+- 一括完了を提供することで、同一タスクの重複管理に伴う手動操作を削減し、Webview 上の操作回数を抑えられる。
 
-## 実装状況 (2025-12-14)
+## 実装状況 (2025-12-17)
 - 完了: QuickCaptureSidebarProvider 実装、package.json の view/command 追加、Quick Capture 用設定追加 (`mdlg.*`)、TaskService/TaskCollector/NoteParser によるタスク一覧・完了処理、DailyNoteManager.appendToSection API 実装。
 - 調整済み: DailyNoteManager 依存を必須化、Webview メッセージのエラールートを整備（`error` コマンド）。
 - **新機能 (2025-12-14)**:
   - タスク表示範囲を dailyNote 配下のみに限定（`getDailyNoteDirectory` API 利用）
   - Ctrl+Enter (Cmd+Enter on Mac) でのクイックキャプチャ送信機能
-- 残課題: multi-root 非対応の扱い、Webview のみへのエラー通知、200件上限の明示的なユーザ通知は今後の改善余地。`DailyNoteManager.appendToSection` の単体テストは IFileWriter DI 化により全件有効化済み。
+- **新機能 (2025-12-17)**:
+  - タスク表示を文言単位でグルーピングし、同一文言は 1 行表示
+  - 完了操作はグループ配下の全タスクに一括適用（複数ファイル/行を対象に完了タグ付与）
+  - タスク走査上限 (200 件) に達した場合、`showWarningMessage` で利用者に警告しつつ先頭 200 件のみを処理
+- 残課題: multi-root 非対応の扱い、Webview のみへのエラー通知（VS Code 通知との二重化検討）。`DailyNoteManager.appendToSection` の単体テストは IFileWriter DI 化により全件有効化済み。
 
 ## テスト
 - 実施: QuickCaptureSidebarProvider / TaskService / TaskCollector / NoteParser のユニットテスト追加。
@@ -40,6 +47,7 @@ VS Code 上で Obsidian ライクなワークフローを補完するため、Ex
 3. multi-root 環境や DailyNote 配下以外のタスクを扱うかの判断。
 
 ## 更新履歴
+- **2025-12-17**: タスク一覧の文言グルーピングと一括完了方針を追加
 - **2025-12-14**: タスク表示範囲をdailyNote配下に限定、Ctrl+Enter送信機能追加
 - **2025-11-19**: DailyNoteManager依存の必須化、テスト追加
 - **2025-10-30**: ADR作成
