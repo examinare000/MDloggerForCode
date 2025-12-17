@@ -80,11 +80,8 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                                 webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
                                 return;
                             }
-                            const parsedItems = items.map(i => ({
-                                uri: vscode.Uri.file(i.uri),
-                                line: Number(i.line)
-                            }));
-                            if (parsedItems.some(i => !i.uri || Number.isNaN(i.line))) {
+                            const parsedItems = this.parseTaskCompletionItems(items);
+                            if (!parsedItems) {
                                 webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
                                 return;
                             }
@@ -174,6 +171,26 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
 
     private getPrimaryWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
         return vscode.workspace.workspaceFolders?.[0];
+    }
+
+    private parseTaskCompletionItems(
+        items: { uri: string; line: number }[]
+    ): { uri: vscode.Uri; line: number }[] | null {
+        const parsed: { uri: vscode.Uri; line: number }[] = [];
+        for (const item of items) {
+            const uriString = item?.uri;
+            if (typeof uriString !== 'string' || uriString.trim() === '') {
+                return null;
+            }
+
+            const lineNumber = Number(item?.line);
+            if (!Number.isFinite(lineNumber)) {
+                return null;
+            }
+
+            parsed.push({ uri: vscode.Uri.file(uriString), line: lineNumber });
+        }
+        return parsed;
     }
 
     private async collectOpenTaskGroups(workspaceFolder: vscode.WorkspaceFolder): Promise<{ groups: TaskGroup[]; truncated: boolean }> {

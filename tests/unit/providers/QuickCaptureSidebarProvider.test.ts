@@ -421,6 +421,70 @@ describe('QuickCaptureSidebarProvider', () => {
             expect(errorMessage.message).to.include('Invalid task complete payload');
         });
 
+        it('should reject empty uri strings before creating Uri objects', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            let called = false;
+            (provider as any).taskServiceInstance = {
+                completeTasks: async () => {
+                    called = true;
+                    return '';
+                }
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:complete',
+                payload: {
+                    text: 'any',
+                    items: [{ uri: '   ', line: 2 }]
+                }
+            });
+
+            expect(called).to.be.false;
+            const errorMessage = receivedMessages.find(m => m.command === 'error');
+            expect(errorMessage).to.exist;
+            expect(errorMessage.message).to.include('Invalid task complete payload');
+        });
+
+        it('should reject non-finite line values before completing', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            let called = false;
+            (provider as any).taskServiceInstance = {
+                completeTasks: async () => {
+                    called = true;
+                    return '';
+                }
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:complete',
+                payload: {
+                    text: 'any',
+                    items: [{ uri: '/test/workspace/note.md', line: Number.NaN }]
+                }
+            });
+
+            expect(called).to.be.false;
+            const errorMessage = receivedMessages.find(m => m.command === 'error');
+            expect(errorMessage).to.exist;
+            expect(errorMessage.message).to.include('Invalid task complete payload');
+        });
+
         it('should send error when TaskService fails to complete tasks', async () => {
             const mockWorkspaceFolder = {
                 uri: vscode.Uri.file('/test/workspace'),
