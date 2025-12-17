@@ -260,38 +260,13 @@ interface ValidationWarning {
 ```typescript
 class MarkdownRenderer {
   /**
-   * Markdownテキストを HTML に変換
+   * MarkdownテキストをHTMLに変換する。
+   * WikiLink（`[[...]]`）はクリック可能なアンカーに変換される。
+   *
    * @param markdown 変換対象のMarkdownテキスト
-   * @param documentUri ベースとなるドキュメントURI
-   * @param options レンダリングオプション
    * @returns 変換されたHTML
    */
-  renderMarkdown(
-    markdown: string,
-    documentUri: vscode.Uri,
-    options?: MarkdownRenderOptions
-  ): Promise<string>;
-  
-  /**
-   * WikiLinkのみを処理してHTML化
-   * @param markdown Markdownテキスト
-   * @param documentUri ベースURI
-   * @returns WikiLinkがHTMLに変換されたテキスト
-   */
-  processWikiLinksOnly(markdown: string, documentUri: vscode.Uri): Promise<string>;
-  
-  /**
-   * レンダリング設定を更新
-   * @param config 新しい設定
-   */
-  updateConfiguration(config: MarkdownRenderOptions): void;
-  
-  /**
-   * カスタムプラグインを追加
-   * @param plugin markdown-itプラグイン
-   * @param options プラグインオプション
-   */
-  addPlugin(plugin: any, options?: any): void;
+  render(markdown: string): string;
 }
 ```
 
