@@ -9,10 +9,10 @@
 - **開発期間**: 2025-09-09 ～ 2025-12-14 (継続開発)
 - **開発手法**: Test-Driven Development (TDD) - t-wada方式
 - **現在バージョン**: v0.4.13
-- **テスト数**: 292個 (278パス / 14スキップ)
-- **テスト成功率**: 100% (スキップ除外時)
+- **テスト数**: 302個 (302パス / 0スキップ)
+- **テスト成功率**: 100%
 - **コンポーネント数**: 13個
-- **ADR記録**: 19件
+- **ADR記録**: 21件
 
 ### ✅ 実装完了機能
 
@@ -32,6 +32,14 @@
 - ✅ **テストモック整合性修正**
   - `TaskService.test.ts` の `MockFileWriter` に `exists`/`createDirectory` を追加
   - `IFileWriter` インターフェース変更に伴うコンパイルエラー解消
+
+#### v0.4.13 プレビュー/タスク導線追加 (2025-12-17)
+- ? **Markdownプレビュー実装**
+  - `mdlg.preview` が WebviewPanel により軽量プレビューを表示
+  - `[[WikiLink]]` をクリックしてノートを開く/作成できる
+- ? **Quick Capture: Open tasks から元ファイルへジャンプ**
+  - タスク文言クリック/「Open」で該当ノートを開き行へジャンプ
+  - 複数候補がある場合は選択してから開く
 
 #### v0.4.11 リネーム/品質向上 (2025-11-19)
 - ? **ObsidianForCode → MDloggerForCode 完全リネーム**
@@ -191,6 +199,8 @@
 17. **ADR-017**: WikiLink Completion Directory Filtering
 18. **ADR-018**: Quick Capture Sidebar
 19. **ADR-019**: DailyNote I/O 抽象化とスコープ制御
+20. **ADR-020**: MarkdownプレビューをWebviewPanelで実装する
+21. **ADR-021**: Quick Captureの未完了タスクからソースファイルへジャンプする
 
 #### 技術文書
 - ? **README.md** - プロジェクト概要・使用方法
@@ -209,18 +219,18 @@
 - **WikiLinkProcessor**: 10 ケース（全パス）
 - **WikiLinkDocumentLinkProvider**: 14 ケース（全パス）
 - **CommandHandler**: 20 ケース（全パス）
-- **ConfigurationManager**: 16 ケース（11 パス / 5 スキップ）
+- **ConfigurationManager**: 16 ケース（全パス）
 - **NoteFinder**: 57 ケース（全パス）
 - **WikiLinkCompletionProvider**: 13 ケース（全パス）
 - **ListContinuationProvider**: 16 ケース（全パス）
-- **DailyNoteManager**: 30 ケース（25 パス / 5 スキップ）
+- **DailyNoteManager**: 30 ケース（全パス）
 - **DailyNoteManager.appendToSection**: 10 ケース（全パス）
 - **WikiLinkContextProvider**: 6 ケース（全パス）
-- **PathUtil**: 27 ケース（24 パス / 3 スキップ）
-- **QuickCaptureSidebarProvider**: 15 ケース（全パス）
+- **PathUtil**: 27 ケース（全パス）
+- **QuickCaptureSidebarProvider**: 17 ケース（全パス）
 - **NoteParser**: 14 ケース（全パス）
-- **統合テスト群**: 20 ケース（19 パス / 1 スキップ）
-- **総計**: 292 ケース（278 パス / 14 スキップ）
+- **統合テスト群**: 20 ケース（全パス）
+- **総計**: 302 ケース（302 パス / 0 スキップ）
 
 ### 開発インフラ強化
 - ? **Git戦略**: GitFlowベースのブランチ戦略確立
@@ -269,22 +279,13 @@
 - **再現可能な開発プロセス** - TDDサイクルの確立
 - **継続開発基盤** - 新機能追加が容易な設計
 
-## ⏸️ スキップされたテスト (14個)
+## ⏸️ スキップされたテスト
 
-以下のテストは意図的にスキップされています：
-
-1. **ConfigurationManager** (5個) - 動的設定変更が必要（グローバルモック未サポート）
-2. **DailyNoteManager TDD Red Phase** (5個) - 実装完了済みのため意図的にスキップ
-3. **PathUtil Windows Tests** (3個) - プラットフォーム依存（非Windows環境で自動スキップ）
-4. **File Creation Integration** (1個) - 実ファイルシステム操作が必要
-
-これらは機能には影響せず、テスト環境の制約によるスキップです。
-
-**v0.4.12での改善**: `DailyNoteManager.appendToSection` の8個のスキップテストは、`IFileWriter` DIにより解消され、全10件がパスするようになりました。
+現状、意図的にスキップしているテストはありません。
 
 ---
 
 **Status: ✅ EXCELLENT QUALITY - v0.4.13**
-**Date: 2025-12-14**
-**Quality: 278/278 active tests passing (100%)**
+**Date: 2025-12-17**
+**Quality: 302/302 active tests passing (100%)**
 **Branch: develop**

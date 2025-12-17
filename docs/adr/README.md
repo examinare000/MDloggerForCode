@@ -25,6 +25,8 @@
 | [017](./017-wikilink-completion-directory-filtering.md) | WikiLink Completion Directory Filtering | Accepted | 2025-10-08 | WikiLink補完でディレクトリパス絞り込み機能を実装 |
 | [018](./018-quick-capture-sidebar.md) | Quick Capture Sidebar | Accepted | 2025-10-30 | DailyNote 連携のクイックキャプチャ Webview とタスク完了機能 |
 | [019](./019-dailynote-io-abstraction-and-scope.md) | DailyNote I/O 抽象化とスコープ制御 | Accepted | 2025-12-15 | IFileWriter DI と Vault ルート解決、DailyNote 配下限定タスク走査 |
+| [020](./020-markdown-preview-webview-panel.md) | MarkdownプレビューをWebviewPanelで実装する | Accepted | 2025-12-17 | `mdlg.preview` の実装（WebviewPanel + WikiLinkクリック） |
+| [021](./021-quick-capture-task-navigation.md) | Quick Captureの未完了タスクからソースファイルへジャンプする | Accepted | 2025-12-17 | Open tasks から元ノートへジャンプできる導線を追加 |
 
 ## ADR作成ガイドライン
 
