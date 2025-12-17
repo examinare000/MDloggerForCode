@@ -7,13 +7,9 @@ describe('デバッグ: パス解決問題の調査', () => {
             // VS Code設定のモック
             const mockVSCodeConfig = {
                 get<T>(key: string, defaultValue?: T): T {
-                    console.log(`[Debug] Config get called with key: "${key}", defaultValue: "${defaultValue}"`);
-
                     // mdlg.vaultRoot が未設定の場合、空文字がデフォルト
                     if (key === 'vaultRoot') {
-                        const result = defaultValue || '';
-                        console.log(`[Debug] Returning vaultRoot: "${result}"`);
-                        return result as T;
+                        return (defaultValue || '') as T;
                     }
 
                     if (key === 'noteExtension') {
@@ -34,10 +30,6 @@ describe('デバッグ: パス解決問題の調査', () => {
             const vaultRoot = mockVSCodeConfig.get('vaultRoot', '');
             const noteExtension = mockVSCodeConfig.get('noteExtension', '.md');
 
-            console.log(`[Debug] vaultRoot: "${vaultRoot}"`);
-            console.log(`[Debug] noteExtension: "${noteExtension}"`);
-            console.log(`[Debug] fileName: "${fileName}"`);
-
             // パス解決
             let resolvedPath: string;
             const vaultRootStr = String(vaultRoot);
@@ -47,8 +39,6 @@ describe('デバッグ: パス解決問題の調査', () => {
                 // 空の場合、ワークスペースルートを使用
                 resolvedPath = `${workspacePath}/${fileName}${noteExtension}`;
             }
-
-            console.log(`[Debug] resolvedPath: "${resolvedPath}"`);
 
             // 検証
             expect(resolvedPath).to.equal('/Users/rio/git/MDloggerForCode/Simple Page.md');
@@ -65,14 +55,10 @@ describe('デバッグ: パス解決問題の調査', () => {
 
             const testConfig: TestConfig = {
                 get<T>(key: string, defaultValue?: T): T {
-                    console.log(`[Test] Getting config key "${key}" with default "${defaultValue}"`);
-
                     // ユーザーが何も設定していない場合の動作
                     if (key === 'vaultRoot') {
                         // VS Codeでは未設定の場合、defaultValueが返される
-                        const value = defaultValue !== undefined ? defaultValue : '';
-                        console.log(`[Test] vaultRoot value: "${value}"`);
-                        return value as T;
+                        return (defaultValue !== undefined ? defaultValue : '') as T;
                     }
 
                     return defaultValue as T;
@@ -87,8 +73,6 @@ describe('デバッグ: パス解決問題の調査', () => {
             }
 
             const result = getVaultRoot(testConfig);
-
-            console.log(`[Test] Final vaultRoot result: "${result}"`);
             expect(result).to.equal(''); // 空文字が正常
         });
     });
@@ -98,8 +82,6 @@ describe('デバッグ: パス解決問題の調査', () => {
             // エラーメッセージから推測されるパス
             const errorPath = '/Simple Page.md';
 
-            console.log(`[Analysis] Error path: "${errorPath}"`);
-
             // このパスが生成される条件を特定
             const possibleCauses = [
                 'vaultRootが空でworkspaceFolderがnull',
@@ -107,8 +89,7 @@ describe('デバッグ: パス解決問題の調査', () => {
                 'パス結合ロジックのバグ',
                 'VS Code環境でのワークスペース取得失敗'
             ];
-
-            console.log('[Analysis] Possible causes:', possibleCauses);
+            expect(possibleCauses).to.have.length.greaterThan(0);
 
             // ルートディレクトリパスが生成される条件を特定
             expect(errorPath.startsWith('/')).to.be.true;
@@ -143,21 +124,16 @@ describe('デバッグ: パス解決問題の調査', () => {
             ];
 
             scenarios.forEach(scenario => {
-                console.log(`[Test] ${scenario.name}`);
-
                 if (scenario.workspaceFolder && scenario.vaultRoot === '') {
                     // 正常ケース
                     const expectedPath = `${scenario.workspaceFolder.uri.fsPath}/Simple Page.md`;
-                    console.log(`[Test] Expected path: ${expectedPath}`);
                     expect(expectedPath).to.not.equal('/Simple Page.md');
                 } else if (!scenario.workspaceFolder) {
                     // workspaceFolderがない場合 - これがエラーの原因か？
-                    console.log('[Test] Error: No workspace folder');
                     expect(scenario.expectedError).to.be.true;
                 } else if (scenario.vaultRoot === '/') {
                     // vaultRootがルートディレクトリの場合
                     const errorPath = `${scenario.vaultRoot}Simple Page.md`;
-                    console.log(`[Test] Error path: ${errorPath}`);
                     expect(errorPath).to.equal('/Simple Page.md');
                     expect(scenario.expectedError).to.be.true;
                 }
