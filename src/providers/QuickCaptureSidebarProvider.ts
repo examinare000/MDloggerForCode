@@ -95,9 +95,29 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                     }
                     case 'task:open': {
                         const payload = (msg as TaskOpenMessage).payload || { text: '', items: [] };
-                        const { text, items } = payload;
+                        let { text, items } = payload;
+
+                        // If the webview did not provide items, try to recover by re-collecting tasks by text.
+                        if (text && (!Array.isArray(items) || items.length === 0)) {
+                            const workspaceFolder = this.getPrimaryWorkspaceFolder();
+                            if (workspaceFolder) {
+                                try {
+                                    const { groups } = await this.collectOpenTaskGroups(workspaceFolder);
+                                    const match = groups.find((g) => g.text === text);
+                                    if (match?.items && match.items.length > 0) {
+                                        items = match.items;
+                                    }
+                                } catch {
+                                    // ignore and fall through to validation error
+                                }
+                            }
+                        }
+
                         if (!text || !Array.isArray(items) || items.length === 0) {
-                            webviewView.webview.postMessage({ command: 'error', message: 'Invalid task open payload' });
+                            webviewView.webview.postMessage({
+                                command: 'error',
+                                message: 'Invalid task open payload'
+                            });
                             return;
                         }
 
@@ -106,13 +126,16 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                         }
 
                         const picks: TaskLocationPick[] = items.map((item) => {
-                            const line = Number(item.line);
-                            const fileLabel = item.file || path.basename(item.uri);
+                            const uriString = item?.uri;
+                            const line = Number(item?.line);
+                            const fileLabel = typeof item?.file === 'string' && item.file.trim() !== ''
+                                ? item.file
+                                : (typeof uriString === 'string' ? path.basename(uriString) : '');
                             const lineLabel = Number.isFinite(line) ? `:${line + 1}` : '';
                             return {
                                 label: `${fileLabel}${lineLabel}`,
-                                description: item.uri,
-                                task: { uri: item.uri, line }
+                                description: typeof uriString === 'string' ? uriString : '',
+                                task: { uri: typeof uriString === 'string' ? uriString : '', line }
                             };
                         }).filter(p => p.task.uri && Number.isFinite(p.task.line));
 

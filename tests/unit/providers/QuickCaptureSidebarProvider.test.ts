@@ -546,6 +546,51 @@ describe('QuickCaptureSidebarProvider', () => {
             expect(opened!.line).to.equal(5);
         });
 
+        it('should recover when items are missing by recollecting tasks for the given text', async () => {
+            const mockWorkspaceFolder = {
+                uri: vscode.Uri.file('/test/workspace'),
+                name: 'test',
+                index: 0
+            };
+            (vscode.workspace as any).workspaceFolders = [mockWorkspaceFolder];
+
+            // vscode.workspace.findFiles is used during recollection
+            (vscode.workspace as any).findFiles = async () => {
+                return [vscode.Uri.file('/test/workspace/dailynotes/note.md')];
+            };
+
+            (provider as any).taskServiceInstance = {
+                collectTasksFromUris: async () => [
+                    {
+                        text: 'todo',
+                        count: 1,
+                        files: ['note.md'],
+                        items: [{ uri: '/test/workspace/note.md', line: 12, file: 'note.md' }]
+                    }
+                ]
+            };
+
+            let opened: { uri: any; line?: number } | undefined;
+            (vscode.window as any).showTextDocument = async (uri: any, options?: any) => {
+                opened = { uri, line: options?.selection?.start?.line };
+                return {};
+            };
+
+            provider.resolveWebviewView(mockWebviewView, {} as any, {} as any);
+            const messageCallback = (mockWebviewView.webview as any)._messageCallback;
+            await messageCallback({
+                command: 'task:open',
+                payload: {
+                    text: 'todo'
+                    // items intentionally omitted to simulate invalid payload from webview
+                }
+            });
+
+            expect(opened).to.exist;
+            expect(opened!.uri.fsPath).to.equal('/test/workspace/note.md');
+            expect(opened!.line).to.equal(12);
+        });
+
         it('should prompt selection when multiple task locations exist', async () => {
             const mockWorkspaceFolder = {
                 uri: vscode.Uri.file('/test/workspace'),
