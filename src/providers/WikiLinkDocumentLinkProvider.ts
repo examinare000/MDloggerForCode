@@ -30,14 +30,36 @@ export class WikiLinkDocumentLinkProvider implements DocumentLinkProvider {
      */
     constructor(configurationManager?: ConfigurationManager) {
         this.configurationManager = configurationManager;
-        
+
         // デフォルト設定でWikiLinkProcessorを初期化
         const slugStrategy = this.configurationManager?.getSlugStrategy() || 'passthrough';
         this.wikiLinkProcessor = new WikiLinkProcessor({
             slugStrategy: slugStrategy
         });
     }
-    
+
+    private async tryResolveLinkTarget(
+        transformedName: string,
+        parsedLink: ParsedWikiLink,
+        extension: string,
+        document: TextDocument
+    ): Promise<Uri | null> {
+        if (!this.resolveLinkTarget) {
+            return null;
+        }
+        try {
+            return await this.resolveLinkTarget({
+                fileName: transformedName,
+                parsedLink,
+                extension,
+                document
+            });
+        } catch (resolveError) {
+            console.warn('Failed to resolve WikiLink target via resolver:', resolveError);
+            return null;
+        }
+    }
+
     /**
      * Provides document links for WikiLink references in the given document.
      * Scans the document for [[Page Name]] patterns and converts them to clickable links.
@@ -70,20 +92,12 @@ export class WikiLinkDocumentLinkProvider implements DocumentLinkProvider {
                 const extension = this.configurationManager?.getNoteExtension() || '.md';
                 const vaultRoot = this.configurationManager?.getVaultRoot() || '';
 
-                let targetUri: Uri | null = null;
-
-                if (this.resolveLinkTarget) {
-                    try {
-                        targetUri = await this.resolveLinkTarget({
-                            fileName: transformedName,
-                            parsedLink,
-                            extension,
-                            document
-                        });
-                    } catch (resolveError) {
-                        console.warn('Failed to resolve WikiLink target via resolver:', resolveError);
-                    }
-                }
+                let targetUri: Uri | null = await this.tryResolveLinkTarget(
+                    transformedName,
+                    parsedLink,
+                    extension,
+                    document
+                );
 
                 if (!targetUri) {
                     const fullPath = vaultRoot

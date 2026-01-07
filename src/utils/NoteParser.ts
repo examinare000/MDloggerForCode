@@ -66,6 +66,21 @@ export function markTaskCompleted(content: string, lineIndex: number, completion
     return lines.join(newline);
 }
 
+function findSectionInsertLine(lines: string[], headingIndex: number): number {
+    let j = headingIndex + 1;
+    let lastContentLine = headingIndex;
+    for (; j < lines.length; j++) {
+        if (/^#{1,6}\s+/.test(lines[j])) {
+            break; // next heading starts here
+        }
+        if (lines[j].trim() !== '') {
+            lastContentLine = j;
+        }
+    }
+    // Insert after the last content line; if none, insert directly after heading
+    return lastContentLine === headingIndex ? headingIndex + 1 : lastContentLine + 1;
+}
+
 /**
  * Insert a line into the named section inside the provided content.
  * If the section exists, insert before the next heading (or at EOF if none).
@@ -85,19 +100,7 @@ export function insertIntoSection(content: string, sectionName: string, lineText
     for (let i = 0; i < lines.length; i++) {
         if (headingRegex.test(lines[i])) {
             found = true;
-            // Find last non-empty content line within the section (before next heading)
-            let j = i + 1;
-            let lastContentLine = i;
-            for (; j < lines.length; j++) {
-                if (/^#{1,6}\s+/.test(lines[j])) {
-                    break; // next heading starts here
-                }
-                if (lines[j].trim() !== '') {
-                    lastContentLine = j;
-                }
-            }
-            // Insert after the last content line; if none, insert directly after heading
-            insertLine = lastContentLine === i ? i + 1 : lastContentLine + 1;
+            insertLine = findSectionInsertLine(lines, i);
             break;
         }
     }

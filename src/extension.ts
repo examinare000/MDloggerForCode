@@ -270,7 +270,27 @@ class WikiLinkDocumentLinkProvider implements vscode.DocumentLinkProvider {
         const slugStrategy = this.configManager.getSlugStrategy();
         this.wikiLinkProcessor = new WikiLinkProcessor({ slugStrategy });
     }
-    
+
+    private async resolveWikiLinkUri(
+        fileName: string,
+        workspaceFolder: vscode.WorkspaceFolder,
+        vaultRoot: string,
+        extension: string
+    ): Promise<vscode.Uri | undefined> {
+        try {
+            const foundFile = await NoteFinder.findNoteByTitle(
+                fileName,
+                workspaceFolder,
+                vaultRoot,
+                extension
+            );
+            return foundFile?.uri;
+        } catch (error) {
+            console.warn('Failed to resolve WikiLink target:', error);
+            return undefined;
+        }
+    }
+
     /**
      * Provides document links for WikiLink references in the given document.
      * Scans the document for [[Page Name]] patterns and converts them to clickable links.
@@ -312,20 +332,7 @@ class WikiLinkDocumentLinkProvider implements vscode.DocumentLinkProvider {
                 let uri: vscode.Uri | undefined;
 
                 if (searchSubdirectories) {
-                    try {
-                        const foundFile = await NoteFinder.findNoteByTitle(
-                            fileName,
-                            workspaceFolder,
-                            vaultRoot,
-                            extension
-                        );
-
-                        if (foundFile) {
-                            uri = foundFile.uri;
-                        }
-                    } catch (error) {
-                        console.warn('Failed to resolve WikiLink target:', error);
-                    }
+                    uri = await this.resolveWikiLinkUri(fileName, workspaceFolder, vaultRoot, extension);
                 }
 
                 if (!uri) {

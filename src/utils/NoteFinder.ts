@@ -81,6 +81,22 @@ export class NoteFinder {
         return null;
     }
 
+    private static checkDirectoryPrefixMatch(relativePath: string, filePrefix: string): boolean {
+        const pathSegments = relativePath.split('/');
+        for (let i = 0; i < pathSegments.length - 1; i++) {
+            if (pathSegments[i].toLowerCase().startsWith(filePrefix.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static isInDirectory(relativePath: string, directoryPath: string): boolean {
+        const normalizedRelativePath = relativePath.toLowerCase();
+        const normalizedDirectoryPath = directoryPath.split(path.sep).join('/').toLowerCase();
+        return normalizedRelativePath.startsWith(normalizedDirectoryPath + '/');
+    }
+
     /**
      * Filters an array of notes by prefix and returns sorted results.
      * This is a static helper method that can be used by both findNotesByPrefix and completion providers.
@@ -118,25 +134,14 @@ export class NoteFinder {
             const exactMatch = note.title.toLowerCase() === filePrefix.toLowerCase();
 
             // Check if any directory in the path matches the prefix
-            let directoryMatches = false;
-            if (!directoryPath && filePrefix) {
-                const pathSegments = note.relativePath.split('/');
-                for (let i = 0; i < pathSegments.length - 1; i++) {
-                    if (pathSegments[i].toLowerCase().startsWith(filePrefix.toLowerCase())) {
-                        directoryMatches = true;
-                        break;
-                    }
-                }
-            }
+            const directoryMatches = !directoryPath && filePrefix
+                ? NoteFinder.checkDirectoryPrefixMatch(note.relativePath, filePrefix)
+                : false;
 
             if (fileNameMatches || directoryMatches) {
                 // If directory path is specified, ensure the file is in that directory (case-insensitive)
-                if (directoryPath) {
-                    const normalizedRelativePath = note.relativePath.toLowerCase();
-                    const normalizedDirectoryPath = directoryPath.split(path.sep).join('/').toLowerCase();
-                    if (!normalizedRelativePath.startsWith(normalizedDirectoryPath + '/')) {
-                        continue;
-                    }
+                if (directoryPath && !NoteFinder.isInDirectory(note.relativePath, directoryPath)) {
+                    continue;
                 }
 
                 let matchType: 'exact' | 'filePrefix' | 'dirPrefix';

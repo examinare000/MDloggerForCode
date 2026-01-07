@@ -236,10 +236,10 @@ export class DateTimeFormatter {
     private to12Hour(hour24: number): number {
         if (hour24 === 0) {
             return 12; // 午前0時は12AM
-        } else if (hour24 <= 12) {
-            return hour24; // 午前1時〜午後12時
-        } else {
-            return hour24 - 12; // 午後1時〜午後11時
         }
+        if (hour24 <= 12) {
+            return hour24; // 午前1時〜午後12時
+        }
+        return hour24 - 12; // 午後1時〜午後11時
     }
 }

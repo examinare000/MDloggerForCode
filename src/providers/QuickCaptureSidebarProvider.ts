@@ -8,7 +8,7 @@ import type { TaskGroup } from '../utils/TaskCollector';
 
 export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
     public static readonly viewId = 'mdlg.quickCapture';
-    private static readonly MAX_DAILY_NOTE_FILES = 200;
+    private static readonly maxDailyNoteFiles = 200;
     private view?: vscode.WebviewView;
     private taskServiceInstance?: TaskService;
 
@@ -72,25 +72,8 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
                         return;
                     }
                     case 'task:complete': {
-                        // payload: { text, items: [{ uri, line }] }
                         const payload = (msg as TaskCompleteMessage).payload || { text: '', items: [] };
-                        try {
-                            const { text, items } = payload;
-                            if (!text || !Array.isArray(items) || items.length === 0) {
-                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
-                                return;
-                            }
-                            const parsedItems = this.parseTaskCompletionItems(items);
-                            if (!parsedItems) {
-                                webviewView.webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
-                                return;
-                            }
-                            const today = new Date().toISOString().slice(0, 10);
-                            await this.taskService.completeTasks(parsedItems, today);
-                            await this.refreshTasks(webviewView.webview);
-                        } catch (err) {
-                            webviewView.webview.postMessage({ command: 'error', message: err instanceof Error ? err.message : String(err) });
-                        }
+                        await this.handleTaskComplete(webviewView.webview, payload);
                         return;
                     }
                     case 'task:open': {
@@ -149,6 +132,25 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    private async handleTaskComplete(
+        webview: vscode.Webview,
+        payload: { text: string; items: { uri: string; line: number; file?: string }[] }
+    ): Promise<void> {
+        const { text, items } = payload;
+        if (!text || !Array.isArray(items) || items.length === 0) {
+            webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+            return;
+        }
+        const parsedItems = this.parseTaskCompletionItems(items);
+        if (!parsedItems) {
+            webview.postMessage({ command: 'error', message: 'Invalid task complete payload' });
+            return;
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        await this.taskService.completeTasks(parsedItems, today);
+        await this.refreshTasks(webview);
+    }
+
     private async refreshTasks(webview: vscode.Webview): Promise<void> {
         const workspaceFolder = this.getPrimaryWorkspaceFolder();
         if (!workspaceFolder) {
@@ -160,7 +162,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
             const { groups, truncated } = await this.collectOpenTaskGroups(workspaceFolder);
             if (truncated) {
                 vscode.window.showWarningMessage(
-                    `Quick Capture: Showing first ${QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES} daily note files; older tasks may be omitted.`
+                    `Quick Capture: Showing first ${QuickCaptureSidebarProvider.maxDailyNoteFiles} daily note files; older tasks may be omitted.`
                 );
             }
             await this.postTasksUpdate(webview, groups);
@@ -195,7 +197,7 @@ export class QuickCaptureSidebarProvider implements vscode.WebviewViewProvider {
 
     private async collectOpenTaskGroups(workspaceFolder: vscode.WorkspaceFolder): Promise<{ groups: TaskGroup[]; truncated: boolean }> {
         const dailyNoteDir = this.dailyNoteManager.getDailyNoteDirectory(workspaceFolder);
-        const maxFiles = QuickCaptureSidebarProvider.MAX_DAILY_NOTE_FILES;
+        const maxFiles = QuickCaptureSidebarProvider.maxDailyNoteFiles;
 
         const files = await vscode.workspace.findFiles(
             new vscode.RelativePattern(dailyNoteDir, '**/*.md'),
