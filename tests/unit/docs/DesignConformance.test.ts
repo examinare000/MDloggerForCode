@@ -49,10 +49,15 @@ describe('Design Conformance (Public Surface)', () => {
       'mdlg.insertTime',
       'mdlg.handleEnterKey',
     ]);
+    // 負のコマンド（VSCodeのデフォルトキーバインディング無効化）は許可
+    const allowedNegativeCommands = new Set([
+      '-editor.action.insertLineAfter',
+    ]);
     const bindings: any[] = pkg.contributes?.keybindings || [];
     // all commands are allowed
     for (const kb of bindings) {
-      expect(allowed.has(kb.command), `Unexpected keybinding command: ${kb.command}`).to.be.true;
+      const isAllowed = allowed.has(kb.command) || allowedNegativeCommands.has(kb.command);
+      expect(isAllowed, `Unexpected keybinding command: ${kb.command}`).to.be.true;
       expect(typeof kb.key).to.equal('string');
       if (kb.when) expect(typeof kb.when).to.equal('string');
     }
