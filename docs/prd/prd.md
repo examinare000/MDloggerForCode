@@ -33,7 +33,7 @@ VS Code Desktop（Win/Mac/Linux）。Remote/WSL/Dev Containers は workspace.fs 
   - `mdlg.openDailyNote`（日次ノート生成・オープン）
   - `mdlg.openQuickCapture` / Quick Capture サイドバー
   - `mdlg.handleEnterKey`（リスト継続）
-- コンテキスト：Ctrl/Cmd+Enter は `mdlg.inWikiLink` が true のときのみ有効
+- コンテキスト：Ctrl/Cmd+Enter は Markdownファイル編集中に有効
 - ファイル I/O：`workspace.fs` で Vault に依存しない読み書き
 - Markdown パース：markdown-it + `@ig3/markdown-it-wikilinks`
 

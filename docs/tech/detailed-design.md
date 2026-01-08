@@ -85,7 +85,7 @@
       { "command": "mdlg.handleEnterKey", "title": "Handle Enter Key" }
     ],
     "keybindings": [
-      { "command": "mdlg.openOrCreateWikiLink", "key": "ctrl+enter", "mac": "cmd+enter", "when": "editorTextFocus && mdlg.inWikiLink" },
+      { "command": "mdlg.openOrCreateWikiLink", "key": "ctrl+enter", "mac": "cmd+enter", "when": "editorTextFocus && editorLangId == 'markdown'" },
       { "command": "mdlg.insertDate", "key": "alt+d", "when": "editorTextFocus" },
       { "command": "mdlg.insertTime", "key": "alt+t", "when": "editorTextFocus" },
       { "command": "mdlg.handleEnterKey", "key": "enter", "when": "editorTextFocus && editorLangId == 'markdown'" }

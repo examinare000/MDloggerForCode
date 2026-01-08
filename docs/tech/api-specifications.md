@@ -511,9 +511,9 @@ interface OpenOrCreateWikiLinkParams {
 }
 ```
 
-**実行条件**: 
+**実行条件**:
 - エディタがアクティブ
-- `mdlg.inWikiLink` コンテキストが true
+- Markdownファイルを編集中（`editorLangId == 'markdown'`）
 
 **動作**:
 1. カーソル位置のWikiLinkを検出
