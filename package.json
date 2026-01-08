@@ -84,7 +84,7 @@
         "command": "mdlg.openOrCreateWikiLink",
         "key": "ctrl+enter",
         "mac": "cmd+enter",
-        "when": "editorTextFocus && mdlg.inWikiLink"
+        "when": "editorTextFocus && editorLangId == 'markdown'"
       },
       {
         "command": "mdlg.insertDate",

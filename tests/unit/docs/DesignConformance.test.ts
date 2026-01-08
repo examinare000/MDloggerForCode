@@ -61,7 +61,7 @@ describe('Design Conformance (Public Surface)', () => {
     expect(enterBinding?.when).to.equal("editorTextFocus && editorLangId == 'markdown'");
 
     const openBinding = bindings.find(b => b.command === 'mdlg.openOrCreateWikiLink');
-    expect(openBinding?.when).to.include('mdlg.inWikiLink');
+    expect(openBinding?.when).to.equal("editorTextFocus && editorLangId == 'markdown'");
   });
 
   it('configuration keys match documented set and provide defaults', () => {

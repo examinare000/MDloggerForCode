@@ -72,12 +72,12 @@ export class WikiLinkContextProvider {
         editor = editor || vscode.window.activeTextEditor;
 
         if (!editor) {
-            vscode.commands.executeCommand('setContext', 'mdlg.inWikiLink', false);
+            void vscode.commands.executeCommand('setContext', 'mdlg.inWikiLink', false);
             return;
         }
 
         if (editor.document.languageId !== 'markdown') {
-            vscode.commands.executeCommand('setContext', 'mdlg.inWikiLink', false);
+            void vscode.commands.executeCommand('setContext', 'mdlg.inWikiLink', false);
             return;
         }
 
